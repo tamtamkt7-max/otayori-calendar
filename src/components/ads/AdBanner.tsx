@@ -4,19 +4,23 @@ import { useEffect, useState } from 'react';
 interface AdBannerProps {
   slot: string;
   className?: string;
+  isPremium?: boolean;
 }
 
-export default function AdBanner({ slot, className = "" }: AdBannerProps) {
+export default function AdBanner({ slot, className = "", isPremium = false }: AdBannerProps) {
   const [isLocal, setIsLocal] = useState(true);
 
   useEffect(() => {
-    // ローカル環境（localhost）かどうかを判定
+    if (isPremium) return;
+
     if (typeof window !== 'undefined') {
       const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       setIsLocal(isLocalHost);
 
-      // 本番環境の場合のみ、Google AdSenseの広告読み込みを試みる
-      if (!isLocalHost) {
+      const isProd = process.env.NODE_ENV === 'production';
+
+      // 本番環境かつ非ローカルの場合のみ、Google AdSenseの広告読み込みを試みる
+      if (isProd && !isLocalHost) {
         try {
           // @ts-ignore
           (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -25,7 +29,12 @@ export default function AdBanner({ slot, className = "" }: AdBannerProps) {
         }
       }
     }
-  }, []);
+  }, [isPremium]);
+
+  // プレミアム会員の場合は広告を完全に非表示にする（コンポーネントをレンダリングしない）
+  if (isPremium) {
+    return null;
+  }
 
   if (isLocal) {
     // 暖色系ペールトーンの可愛いダミー広告プレースホルダー

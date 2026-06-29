@@ -43,6 +43,7 @@ export default function Home() {
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
+  const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
 
   // Web Push (FCM) のStateとカスタムフック
   const { 
@@ -206,6 +207,32 @@ export default function Home() {
     }
   };
 
+  // --- Stripe決済画面への遷移処理 ---
+  const handleUpgrade = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.uid,
+          email: user?.email
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || '決済の準備に失敗しました。');
+      }
+    } catch (error: any) {
+      console.error("Stripe Checkout Error:", error);
+      alert(error.message || "Stripe決済画面の生成中にエラーが発生しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- AIスキャンロジック ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -233,7 +260,8 @@ export default function Home() {
         if (response.ok) {
           const newEvents = data.events.map((ev: any, idx: number) => ({
             ...ev,
-            id: `ai-scan-${Date.now()}-${idx}`
+            id: `ai-scan-${Date.now()}-${idx}`,
+            imageUrl: data.imageUrl || null
           }));
 
           // API経由でFirestoreに解析結果とリマインド設定を保存
@@ -254,7 +282,7 @@ export default function Home() {
 
           setEvents(prev => [...prev, ...newEvents]);
           if (newEvents.length > 0) setSelectedDateStr(newEvents[0].date);
-          setScanResult(newEvents.map((ev: any) => ({ ...ev, remindThreeDays: true, remindOneDay: true })));
+          setScanResult(newEvents.map((ev: any) => ({ ...ev, remindThreeDays: true, remindOneDay: true, imageUrl: data.imageUrl || null })));
           setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
         } else {
           if (response.status === 403) {
@@ -417,14 +445,26 @@ export default function Home() {
               <p className="text-[10px] text-stone-400 font-medium -mt-0.5">プリントを撮るだけ自動登録</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 cursor-pointer group" onClick={handleLogout} title="クリックでログアウト">
-            <span className="text-[10px] bg-stone-100 border border-stone-200 text-stone-500 px-2 py-1 rounded-full font-bold">無料プラン</span>
-            <div className="w-8 h-8 rounded-full border border-stone-200 overflow-hidden bg-stone-100 flex items-center justify-center group-hover:border-orange-300 transition">
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="icon" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-xs font-bold text-stone-400">{user.email?.charAt(0).toUpperCase()}</span>
-              )}
+          <div className="flex items-center gap-3">
+            {!userStatus.isPremium ? (
+              <button 
+                onClick={handleUpgrade}
+                disabled={loading}
+                className="text-[10px] bg-gradient-to-r from-orange-400 to-amber-400 hover:from-orange-500 hover:to-amber-500 text-white px-3 py-1.5 rounded-full font-extrabold shadow-sm transition-all active:scale-95 disabled:opacity-50"
+              >
+                {loading ? '接続中...' : '👑 プレミアムにする'}
+              </button>
+            ) : (
+              <span className="text-[10px] bg-amber-50 border border-amber-200 text-amber-600 px-2.5 py-1.5 rounded-full font-extrabold">👑 プレミアム会員</span>
+            )}
+            <div className="flex items-center gap-2 cursor-pointer group" onClick={handleLogout} title="クリックでログアウト">
+              <div className="w-8 h-8 rounded-full border border-stone-200 overflow-hidden bg-stone-100 flex items-center justify-center group-hover:border-orange-300 transition">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="icon" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs font-bold text-stone-400">{user.email?.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -438,7 +478,15 @@ export default function Home() {
                 <h3 className="text-[11px] font-bold text-stone-500 tracking-wider">今月の自動よみとり残回数</h3>
                 <p className="text-lg font-bold text-stone-600 mt-0.5">あと <span className="text-orange-400 text-3xl font-black">{userStatus.remainingScans}</span> 回</p>
               </div>
-              <button className="bg-white border border-stone-200 hover:bg-stone-50 text-stone-600 font-bold text-xs px-3.5 py-2.5 rounded-full transition active:scale-95">無制限にする</button>
+              {!userStatus.isPremium && (
+                <button 
+                  onClick={handleUpgrade}
+                  disabled={loading}
+                  className="bg-gradient-to-r from-orange-400 to-amber-400 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs px-4 py-2.5 rounded-full transition active:scale-95 shadow-sm disabled:opacity-50"
+                >
+                  {loading ? '接続中...' : '無制限にする'}
+                </button>
+              )}
             </div>
             <div className="w-full bg-stone-200/50 h-2 rounded-full overflow-hidden">
               <div className="bg-orange-300 h-full transition-all duration-500 rounded-full" style={{ width: `${(userStatus.remainingScans / userStatus.maxScans) * 100}%` }}></div>
@@ -493,18 +541,30 @@ export default function Home() {
                 if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
                 const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                 const isSelected = dateStr === selectedDateStr;
-                const hasEvents = events.some(e => e.date === dateStr);
+                const dayEvents = events.filter(e => e.date === dateStr);
+                const hasEvents = dayEvents.length > 0;
+                const uniqueColors = Array.from(new Set(dayEvents.map(e => e.color || 'common')));
                 return (
                   <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10' : 'hover:bg-stone-50 text-stone-600'}`}>
                     <span>{date.getDate()}</span>
-                    {hasEvents && <span className={`w-1.5 h-1.5 rounded-full absolute bottom-1.5 ${isSelected ? 'bg-orange-500' : 'bg-stone-300'}`}></span>}
+                    {hasEvents && (
+                      <div className="absolute bottom-1.5 flex gap-0.5 justify-center">
+                        {uniqueColors.map(col => {
+                          let dotColor = 'bg-orange-400';
+                          if (col === 'father') dotColor = 'bg-sky-400';
+                          if (col === 'mother') dotColor = 'bg-rose-400';
+                          if (col === 'child') dotColor = 'bg-emerald-400';
+                          return <span key={col} className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>;
+                        })}
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <AdBanner slot="calendar-bottom" />
+          <AdBanner slot="calendar-bottom" isPremium={userStatus.isPremium} />
 
           {loading && (
             <div className="bg-stone-50 border-2 border-dashed border-stone-200 rounded-3xl p-8 text-center space-y-4 animate-pulse">
@@ -524,10 +584,16 @@ export default function Home() {
               <div className="space-y-3">
                 {scanResult.map((ev) => (
                   <div key={ev.id} className="bg-white p-4 rounded-2xl border border-stone-100 focus-within:border-teal-300 focus-within:shadow-sm transition-all space-y-3">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <input type="text" value={ev.date} onChange={(e) => handleUpdateEvent(ev.id, 'date', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none w-28 focus:ring-1 focus:ring-teal-200" />
                       <select value={ev.category} onChange={(e) => handleUpdateEvent(ev.id, 'category', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
-                        <option value="school">学校・園</option><option value="event">行事</option><option value="medical">保健</option>
+                        <option value="school">🏫 学校・園</option><option value="event">🎈 行事</option><option value="medical">🏥 保健</option>
+                      </select>
+                      <select value={ev.color || 'common'} onChange={(e) => handleUpdateEvent(ev.id, 'color', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
+                        <option value="common">👪 共通</option>
+                        <option value="father">👨 パパ</option>
+                        <option value="mother">👩 ママ</option>
+                        <option value="child">👶 子供</option>
                       </select>
                     </div>
                     <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm focus:border-teal-300 focus:ring-0" />
@@ -572,6 +638,8 @@ export default function Home() {
                   date: selectedDateStr,
                   details: "",
                   category: "school",
+                  color: "common",
+                  imageUrl: null,
                   remindThreeDays: true,
                   remindOneDay: true,
                   remindCustom: false,
@@ -593,41 +661,76 @@ export default function Home() {
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-300 my-auto"><span className="text-3xl mb-2 opacity-30">☕</span><p className="text-[11px] font-bold">予定はありません</p></div>
             ) : (
               <div className="space-y-3 flex-1 overflow-y-auto">
-                {filteredEvents.map((ev) => (
-                  <div key={ev.id} className="p-3.5 bg-[#FDFBF9] rounded-2xl border border-stone-100 relative group transition-all duration-250">
-                    <div className="flex justify-between items-start">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
-                        {ev.category === 'school' && '🏫 学校・園'}{ev.category === 'event' && '🎈 行事・イベント'}{ev.category === 'medical' && '🏥 保健・病院'}
-                      </span>
-                      <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => {
-                            setEditingEvent(ev);
-                            setIsEventModalOpen(true);
-                          }}
-                          className="text-stone-400 hover:text-orange-400 text-xs p-1"
-                          title="予定を編集"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteEvent(ev.id)}
-                          className="text-stone-400 hover:text-rose-400 text-xs p-1"
-                          title="予定を削除"
-                        >
-                          🗑️
-                        </button>
+                {filteredEvents.map((ev) => {
+                  let cardColorClass = 'bg-[#FDFBF9] border-stone-100';
+                  if (ev.color === 'father') cardColorClass = 'bg-sky-50/40 border-sky-100/70';
+                  if (ev.color === 'mother') cardColorClass = 'bg-rose-50/40 border-rose-100/70';
+                  if (ev.color === 'child') cardColorClass = 'bg-emerald-50/40 border-emerald-100/70';
+
+                  const colorLabels: Record<string, string> = {
+                    common: '共通',
+                    father: 'パパ',
+                    mother: 'ママ',
+                    child: '子供'
+                  };
+                  const colorBadgeClasses: Record<string, string> = {
+                    common: 'bg-orange-100 text-orange-700',
+                    father: 'bg-sky-100 text-sky-700',
+                    mother: 'bg-rose-100 text-rose-700',
+                    child: 'bg-emerald-100 text-emerald-700'
+                  };
+
+                  return (
+                    <div key={ev.id} className={`p-3.5 rounded-2xl border relative group transition-all duration-250 ${cardColorClass}`}>
+                      <div className="flex justify-between items-start">
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
+                            {ev.category === 'school' && '🏫 学校・園'}{ev.category === 'event' && '🎈 行事'}{ev.category === 'medical' && '🏥 保健'}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${colorBadgeClasses[ev.color || 'common']}`}>
+                            {colorLabels[ev.color || 'common']}
+                          </span>
+                        </div>
+                        <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditingEvent(ev);
+                              setIsEventModalOpen(true);
+                            }}
+                            className="text-stone-400 hover:text-orange-400 text-xs p-1"
+                            title="予定を編集"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteEvent(ev.id)}
+                            className="text-stone-400 hover:text-rose-400 text-xs p-1"
+                            title="予定を削除"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
+                      <h4 className="font-bold text-stone-700 text-sm mt-2.5">{ev.title}</h4>
+                      <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed whitespace-pre-wrap">{ev.details}</p>
+                      
+                      {ev.imageUrl && (
+                        <button 
+                          type="button"
+                          onClick={() => setActiveImageUrl(ev.imageUrl)}
+                          className="mt-3 w-full py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold rounded-xl text-[10px] transition flex items-center justify-center gap-1 border border-stone-200/50"
+                        >
+                          📷 おたより画像を表示
+                        </button>
+                      )}
                     </div>
-                    <h4 className="font-bold text-stone-700 text-sm mt-2.5">{ev.title}</h4>
-                    <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed whitespace-pre-wrap">{ev.details}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          <AdBanner slot="sidebar-bottom" />
+          <AdBanner slot="sidebar-bottom" isPremium={userStatus.isPremium} />
         </div>
       </main>
 
@@ -644,10 +747,11 @@ export default function Home() {
             </p>
             <div className="space-y-2.5">
               <button 
-                onClick={() => alert("ご興味を持っていただきありがとうございます！プレミアムプランは現在準備中です。公開まで楽しみにお待ちください♪")}
-                className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition active:scale-95 shadow-sm"
+                onClick={handleUpgrade}
+                disabled={loading}
+                className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition active:scale-95 shadow-sm disabled:opacity-50"
               >
-                プレミアムプランを試してみる（準備中）
+                {loading ? '接続中...' : 'プレミアム会員にアップグレード (月額480円)'}
               </button>
               <button 
                 onClick={() => setIsLimitModalOpen(false)}
@@ -683,6 +787,27 @@ export default function Home() {
                   <option value="event">🎈 行事・イベント</option>
                   <option value="medical">🏥 保健・病院</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">カラー</label>
+                <div className="flex gap-2.5 mt-1">
+                  {[
+                    { key: 'common', color: 'bg-orange-400', label: '共通' },
+                    { key: 'father', color: 'bg-sky-400', label: 'パパ' },
+                    { key: 'mother', color: 'bg-rose-400', label: 'ママ' },
+                    { key: 'child', color: 'bg-emerald-400', label: '子供' }
+                  ].map(c => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setEditingEvent({ ...editingEvent, color: c.key })}
+                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold text-white transition active:scale-95 ${c.color} ${editingEvent.color === c.key ? 'ring-2 ring-stone-800 ring-offset-1 scale-105' : 'opacity-85'}`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -776,6 +901,18 @@ export default function Home() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* おたより画像拡大モーダル */}
+      {activeImageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md animate-fadeIn" onClick={() => setActiveImageUrl(null)}>
+          <div className="relative max-w-3xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl p-2 animate-scaleIn" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setActiveImageUrl(null)} className="absolute top-4 right-4 bg-stone-900/75 hover:bg-stone-900 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-95 shadow-md z-10">✕</button>
+            <div className="max-h-[80vh] overflow-auto flex justify-center">
+              <img src={activeImageUrl} alt="おたより画像" className="max-h-[80vh] w-auto object-contain rounded-2xl" />
+            </div>
+          </div>
         </div>
       )}
     </div>

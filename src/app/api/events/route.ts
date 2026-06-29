@@ -74,6 +74,8 @@ export async function POST(req: Request) {
       date: event.date || '',
       details: event.details || '',
       category: event.category || 'school',
+      color: event.color || 'common',
+      imageUrl: event.imageUrl || null,
       remindThreeDays: !!event.remindThreeDays,
       remindOneDay: !!event.remindOneDay,
       remindCustom: !!event.remindCustom,

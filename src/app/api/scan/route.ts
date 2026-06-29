@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import crypto from 'crypto';
 
 // firebase-admin をリクエスト時に初期化するヘルパー (ビルドエラーの回避)
 function getFirestoreInstance() {
@@ -83,6 +85,35 @@ export async function POST(req: Request) {
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
 
+    // Firebase Storageへおたより画像を保存
+    let imageUrl: string | null = null;
+    try {
+      const storage = getStorage();
+      const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+      if (!bucketName) {
+        throw new Error("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is not set");
+      }
+      const bucket = storage.bucket(bucketName);
+      const filename = `users/${userId}/letters/${Date.now()}.jpg`;
+      const file = bucket.file(filename);
+
+      const downloadToken = crypto.randomUUID();
+      const buffer = Buffer.from(base64Data, 'base64');
+      await file.save(buffer, {
+        metadata: {
+          contentType: mimeType,
+          metadata: {
+            firebaseStorageDownloadTokens: downloadToken
+          }
+        }
+      });
+
+      imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filename)}?alt=media&token=${downloadToken}`;
+      console.log("Successfully uploaded print image to Firebase Storage. URL:", imageUrl);
+    } catch (storageError) {
+      console.error("Firebase Storage upload error (skipping image link):", storageError);
+    }
+
     // Gemini 1.5 Flash を呼び出し
     const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
@@ -152,7 +183,7 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json({ success: true, events, remaining: finalRemaining });
+    return NextResponse.json({ success: true, events, remaining: finalRemaining, imageUrl });
 
   } catch (error: any) {
     console.error("API Error:", error);
