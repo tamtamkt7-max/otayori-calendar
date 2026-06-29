@@ -41,6 +41,8 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userStatus, setUserStatus] = useState({ isPremium: false, remainingScans: 10, maxScans: 10 });
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<any | null>(null);
 
   // Web Push (FCM) のStateとカスタムフック
   const { 
@@ -158,6 +160,52 @@ export default function Home() {
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const filteredEvents = events.filter(e => e.date === selectedDateStr);
 
+  // --- API経由で予定を保存するヘルパー関数 (通知予約の自動生成を伴う) ---
+  const saveEventToBackend = async (evt: any) => {
+    if (!user) return;
+    const response = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.uid,
+        action: 'save',
+        event: evt
+      })
+    });
+    if (!response.ok) {
+      throw new Error('予定の保存に失敗しました');
+    }
+  };
+
+  const handleSaveModalEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !editingEvent) return;
+    
+    try {
+      setLoading(true);
+      const isNew = !editingEvent.id;
+      const finalEvent = {
+        ...editingEvent,
+        id: editingEvent.id || `manual-${Date.now()}`
+      };
+      
+      await saveEventToBackend(finalEvent);
+      
+      if (isNew) {
+        setEvents(prev => [...prev, finalEvent]);
+      } else {
+        setEvents(prev => prev.map(ev => ev.id === finalEvent.id ? finalEvent : ev));
+      }
+      setIsEventModalOpen(false);
+      setEditingEvent(null);
+    } catch (err) {
+      console.error("予定の保存に失敗しました:", err);
+      alert("予定の保存に失敗しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- AIスキャンロジック ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -188,30 +236,25 @@ export default function Home() {
             id: `ai-scan-${Date.now()}-${idx}`
           }));
 
-          // Firestoreに解析結果を保存
+          // API経由でFirestoreに解析結果とリマインド設定を保存
           if (user) {
             try {
-              const batch = writeBatch(db);
-              newEvents.forEach((ev: any) => {
-                const docRef = doc(db, `users/${user.uid}/events`, ev.id);
-                batch.set(docRef, {
-                  title: ev.title,
-                  date: ev.date,
-                  details: ev.details,
-                  category: ev.category,
-                  createdAt: new Date().toISOString()
+              for (const ev of newEvents) {
+                await saveEventToBackend({
+                  ...ev,
+                  remindThreeDays: true, // デフォルトで3日前と1日前の通知をON
+                  remindOneDay: true
                 });
-              });
-              await batch.commit();
+              }
             } catch (fsError) {
-              console.error("Firestoreへの保存エラー:", fsError);
+              console.error("予定の保存エラー:", fsError);
               setErrorMessage("おたよりは解析されましたが、予定の保存に失敗しました💦");
             }
           }
 
           setEvents(prev => [...prev, ...newEvents]);
           if (newEvents.length > 0) setSelectedDateStr(newEvents[0].date);
-          setScanResult(newEvents);
+          setScanResult(newEvents.map((ev: any) => ({ ...ev, remindThreeDays: true, remindOneDay: true })));
           setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
         } else {
           if (response.status === 403) {
@@ -228,18 +271,21 @@ export default function Home() {
     };
   };
 
-  const handleUpdateEvent = async (id: string, field: string, value: string) => {
+  const handleUpdateEvent = async (id: string, field: string, value: any) => {
     // 楽観的アップデート（UIの即時更新）
     setScanResult(prev => prev?.map(ev => ev.id === id ? { ...ev, [field]: value } : ev) || null);
     setEvents(prev => prev.map(ev => ev.id === id ? { ...ev, [field]: value } : ev));
 
-    // Firestoreのドキュメントを更新
-    if (user) {
+    // バックエンドAPI経由で予定を更新
+    const targetEv = events.find(ev => ev.id === id) || scanResult?.find(ev => ev.id === id);
+    if (targetEv && user) {
       try {
-        const docRef = doc(db, `users/${user.uid}/events`, id);
-        await setDoc(docRef, { [field]: value }, { merge: true });
+        await saveEventToBackend({
+          ...targetEv,
+          [field]: value
+        });
       } catch (error) {
-        console.error("Firestore更新エラー:", error);
+        console.error("予定の更新エラー:", error);
         setErrorMessage("変更内容の保存に失敗しました。電波の良い環境で再度お試しください💦");
       }
     }
@@ -254,10 +300,20 @@ export default function Home() {
 
     if (user) {
       try {
-        const docRef = doc(db, `users/${user.uid}/events`, id);
-        await deleteDoc(docRef);
+        const response = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            action: 'delete',
+            event: { id }
+          })
+        });
+        if (!response.ok) {
+          throw new Error();
+        }
       } catch (error) {
-        console.error("Firestore削除エラー:", error);
+        console.error("予定の削除エラー:", error);
         setErrorMessage("予定の削除に失敗しました。再度お試しください💦");
       }
     }
@@ -467,15 +523,26 @@ export default function Home() {
               </div>
               <div className="space-y-3">
                 {scanResult.map((ev) => (
-                  <div key={ev.id} className="bg-white p-4 rounded-2xl border border-stone-100 focus-within:border-teal-300 focus-within:shadow-sm transition-all">
-                    <div className="flex gap-2 mb-2">
+                  <div key={ev.id} className="bg-white p-4 rounded-2xl border border-stone-100 focus-within:border-teal-300 focus-within:shadow-sm transition-all space-y-3">
+                    <div className="flex gap-2">
                       <input type="text" value={ev.date} onChange={(e) => handleUpdateEvent(ev.id, 'date', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none w-28 focus:ring-1 focus:ring-teal-200" />
                       <select value={ev.category} onChange={(e) => handleUpdateEvent(ev.id, 'category', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
                         <option value="school">学校・園</option><option value="event">行事</option><option value="medical">保健</option>
                       </select>
                     </div>
-                    <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm mb-2 focus:border-teal-300 focus:ring-0" />
+                    <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm focus:border-teal-300 focus:ring-0" />
                     <textarea value={ev.details} onChange={(e) => handleUpdateEvent(ev.id, 'details', e.target.value)} className="w-full text-[11px] text-stone-500 border-none p-2 resize-none h-14 bg-stone-50 rounded-xl focus:ring-1 focus:ring-teal-200" />
+                    
+                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 text-[10px] text-stone-500 font-bold border-t border-stone-100/50">
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={ev.remindThreeDays || false} onChange={(e) => handleUpdateEvent(ev.id, 'remindThreeDays', e.target.checked)} className="rounded text-teal-400 focus:ring-teal-300 focus:ring-1 border-stone-200 scale-90" />
+                        3日前通知
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={ev.remindOneDay || false} onChange={(e) => handleUpdateEvent(ev.id, 'remindOneDay', e.target.checked)} className="rounded text-teal-400 focus:ring-teal-300 focus:ring-1 border-stone-200 scale-90" />
+                        1日前通知
+                      </label>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -497,6 +564,25 @@ export default function Home() {
               </div>
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={loading} />
             </label>
+
+            <button 
+              onClick={() => {
+                setEditingEvent({
+                  title: "",
+                  date: selectedDateStr,
+                  details: "",
+                  category: "school",
+                  remindThreeDays: true,
+                  remindOneDay: true,
+                  remindCustom: false,
+                  customRemindAt: ""
+                });
+                setIsEventModalOpen(true);
+              }}
+              className="w-full mt-3 py-3 bg-stone-50 hover:bg-stone-100 text-stone-600 font-bold rounded-2xl text-xs transition active:scale-95 border border-stone-200"
+            >
+              ✍️ 手動で予定を追加する
+            </button>
           </div>
 
           <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 flex-1 min-h-[300px] flex flex-col">
@@ -513,13 +599,25 @@ export default function Home() {
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
                         {ev.category === 'school' && '🏫 学校・園'}{ev.category === 'event' && '🎈 行事・イベント'}{ev.category === 'medical' && '🏥 保健・病院'}
                       </span>
-                      <button 
-                        onClick={() => handleDeleteEvent(ev.id)}
-                        className="text-stone-400 hover:text-rose-400 text-xs p-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                        title="予定を削除"
-                      >
-                        🗑️
-                      </button>
+                      <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setEditingEvent(ev);
+                            setIsEventModalOpen(true);
+                          }}
+                          className="text-stone-400 hover:text-orange-400 text-xs p-1"
+                          title="予定を編集"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteEvent(ev.id)}
+                          className="text-stone-400 hover:text-rose-400 text-xs p-1"
+                          title="予定を削除"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                     <h4 className="font-bold text-stone-700 text-sm mt-2.5">{ev.title}</h4>
                     <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed whitespace-pre-wrap">{ev.details}</p>
@@ -559,6 +657,125 @@ export default function Home() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 予定の追加・編集モーダル */}
+      {isEventModalOpen && editingEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-fadeIn">
+          <form 
+            onSubmit={handleSaveModalEvent}
+            className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-xl animate-scaleIn text-left space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <h3 className="text-base font-extrabold text-stone-800 tracking-tight">
+              {editingEvent.id ? '✏️ 予定を編集する' : '✍️ 新しい予定を追加する'}
+            </h3>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">カテゴリ</label>
+                <select 
+                  value={editingEvent.category || 'school'} 
+                  onChange={(e) => setEditingEvent({ ...editingEvent, category: e.target.value })} 
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                >
+                  <option value="school">🏫 学校・園</option>
+                  <option value="event">🎈 行事・イベント</option>
+                  <option value="medical">🏥 保健・病院</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">日付</label>
+                <input 
+                  type="date" 
+                  required
+                  value={editingEvent.date || ''} 
+                  onChange={(e) => setEditingEvent({ ...editingEvent, date: e.target.value })} 
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">タイトル</label>
+                <input 
+                  type="text" 
+                  required
+                  value={editingEvent.title || ''} 
+                  onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })} 
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-700 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">詳細（持ち物など）</label>
+                <textarea 
+                  value={editingEvent.details || ''} 
+                  onChange={(e) => setEditingEvent({ ...editingEvent, details: e.target.value })} 
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-500 font-bold h-20 resize-none"
+                />
+              </div>
+
+              {/* リマインド通知設定 */}
+              <div className="space-y-2 p-3 bg-stone-100/50 rounded-2xl border border-stone-200/50">
+                <p className="text-[10px] font-bold text-stone-500 tracking-wider">🔔 リマインド通知設定</p>
+                <label className="flex items-center gap-2 text-xs text-stone-600 font-bold cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingEvent.remindThreeDays || false} 
+                    onChange={(e) => setEditingEvent({ ...editingEvent, remindThreeDays: e.target.checked })} 
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                  />
+                  予定の3日前に通知 (19:00)
+                </label>
+                <label className="flex items-center gap-2 text-xs text-stone-600 font-bold cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingEvent.remindOneDay || false} 
+                    onChange={(e) => setEditingEvent({ ...editingEvent, remindOneDay: e.target.checked })} 
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                  />
+                  予定の前日に通知 (19:00)
+                </label>
+                <label className="flex items-center gap-2 text-xs text-stone-600 font-bold cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingEvent.remindCustom || false} 
+                    onChange={(e) => setEditingEvent({ ...editingEvent, remindCustom: e.target.checked })} 
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                  />
+                  日時を指定して通知
+                </label>
+                {editingEvent.remindCustom && (
+                  <input 
+                    type="datetime-local" 
+                    value={editingEvent.customRemindAt || ""} 
+                    onChange={(e) => setEditingEvent({ ...editingEvent, customRemindAt: e.target.value })} 
+                    className="w-full mt-1 px-3 py-2 text-xs bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button 
+                type="submit"
+                className="flex-1 bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
+              >
+                保存する
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsEventModalOpen(false);
+                  setEditingEvent(null);
+                }}
+                className="flex-1 bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3.5 rounded-xl text-xs transition active:scale-95"
+              >
+                キャンセル
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
