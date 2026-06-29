@@ -1,65 +1,566 @@
-import Image from "next/image";
+"use client";
+import { useState, useEffect } from 'react';
+import { 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged, 
+  User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword
+} from 'firebase/auth';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  writeBatch 
+} from 'firebase/firestore';
+import { auth, googleProvider, db } from '../lib/firebase';
+import { useFcm } from '../hooks/useFcm';
+import AdBanner from '../components/ads/AdBanner';
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+  // --- 認証関連のState ---
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  // メールアドレス・パスワード認証用State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // --- カレンダー関連のState ---
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1));
+  const [selectedDateStr, setSelectedDateStr] = useState<string>("2026-07-10");
+  const [events, setEvents] = useState<any[]>([]);
+  
+  const [loading, setLoading] = useState(false);
+  const [scanResult, setScanResult] = useState<any[] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [userStatus, setUserStatus] = useState({ isPremium: false, remainingScans: 10, maxScans: 10 });
+  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+
+  // Web Push (FCM) のStateとカスタムフック
+  const { 
+    permissionStatus, 
+    requestPermission, 
+    loading: fcmLoading, 
+    error: fcmError 
+  } = useFcm(user?.uid);
+
+  // ログイン状態の監視とデータ同期
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
+      
+      if (currentUser) {
+        // Firestoreから予定とユーザーステータスを取得
+        try {
+          // 1. 予定のフェッチ
+          const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/events`));
+          const fetchedEvents: any[] = [];
+          querySnapshot.forEach((doc) => {
+            fetchedEvents.push({ id: doc.id, ...doc.data() });
+          });
+          setEvents(fetchedEvents);
+
+          // 2. ユーザーステータス（プラン・スキャン回数）の同期
+          const { getDoc } = await import('firebase/firestore');
+          const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            const isPremium = userData.plan === 'premium';
+            
+            // 日本時間の現在年月を取得してリセット判定
+            const now = new Date();
+            const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+            const currentMonthStr = `${jstDate.getFullYear()}-${String(jstDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            const lastScanMonth = userData.lastScanMonth || '';
+            const scanCount = lastScanMonth === currentMonthStr ? (userData.scanCount || 0) : 0;
+            const remainingScans = isPremium ? 9999 : Math.max(0, 10 - scanCount);
+            
+            setUserStatus({
+              isPremium,
+              remainingScans,
+              maxScans: 10
+            });
+          }
+        } catch (error) {
+          console.error("データ同期エラー:", error);
+          setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
+        }
+      } else {
+        setEvents([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Googleログイン処理
+  const handleGoogleLogin = async () => {
+    setAuthError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Googleログインエラー:", error);
+      setAuthError("Googleでのログインに失敗しました。");
+    }
+  };
+
+  // メール/パスワード 登録・ログイン処理
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    try {
+      if (isSignUpMode) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (error: any) {
+      console.error("メール認証エラー:", error);
+      if (error.code === 'auth/email-already-in-use') {
+        setAuthError("このメールアドレスは既に登録されています。");
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        setAuthError("メールアドレスまたはパスワードが間違っています。");
+      } else if (error.code === 'auth/weak-password') {
+        setAuthError("パスワードは6文字以上で設定してください。");
+      } else {
+        setAuthError("認証に失敗しました。入力内容をご確認ください。");
+      }
+    }
+  };
+
+  // ログアウト処理
+  const handleLogout = async () => {
+    if (confirm("ログアウトしますか？")) {
+      await signOut(auth);
+      setEvents([]); // ログアウト時にデータをクリア
+      setEmail('');
+      setPassword('');
+    }
+  };
+
+  // --- カレンダー描画ロジック ---
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const calendarCells = [];
+  for (let i = 0; i < firstDayOfMonth; i++) calendarCells.push(null);
+  for (let i = 1; i <= daysInMonth; i++) calendarCells.push(new Date(year, month, i));
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const filteredEvents = events.filter(e => e.date === selectedDateStr);
+
+  // --- AIスキャンロジック ---
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setScanResult(null);
+    setErrorMessage(null);
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64Image = reader.result as string;
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            image: base64Image,
+            userId: user?.uid
+          }),
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          const newEvents = data.events.map((ev: any, idx: number) => ({
+            ...ev,
+            id: `ai-scan-${Date.now()}-${idx}`
+          }));
+
+          // Firestoreに解析結果を保存
+          if (user) {
+            try {
+              const batch = writeBatch(db);
+              newEvents.forEach((ev: any) => {
+                const docRef = doc(db, `users/${user.uid}/events`, ev.id);
+                batch.set(docRef, {
+                  title: ev.title,
+                  date: ev.date,
+                  details: ev.details,
+                  category: ev.category,
+                  createdAt: new Date().toISOString()
+                });
+              });
+              await batch.commit();
+            } catch (fsError) {
+              console.error("Firestoreへの保存エラー:", fsError);
+              setErrorMessage("おたよりは解析されましたが、予定の保存に失敗しました💦");
+            }
+          }
+
+          setEvents(prev => [...prev, ...newEvents]);
+          if (newEvents.length > 0) setSelectedDateStr(newEvents[0].date);
+          setScanResult(newEvents);
+          setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
+        } else {
+          if (response.status === 403) {
+            setIsLimitModalOpen(true);
+          } else {
+            setErrorMessage(data.error || "おたよりの読み込みに失敗しました😢");
+          }
+        }
+      } catch (err: any) {
+        setErrorMessage("通信に失敗しました。電波の良いところで再度お試しください💦");
+      } finally {
+        setLoading(false);
+      }
+    };
+  };
+
+  const handleUpdateEvent = async (id: string, field: string, value: string) => {
+    // 楽観的アップデート（UIの即時更新）
+    setScanResult(prev => prev?.map(ev => ev.id === id ? { ...ev, [field]: value } : ev) || null);
+    setEvents(prev => prev.map(ev => ev.id === id ? { ...ev, [field]: value } : ev));
+
+    // Firestoreのドキュメントを更新
+    if (user) {
+      try {
+        const docRef = doc(db, `users/${user.uid}/events`, id);
+        await setDoc(docRef, { [field]: value }, { merge: true });
+      } catch (error) {
+        console.error("Firestore更新エラー:", error);
+        setErrorMessage("変更内容の保存に失敗しました。電波の良い環境で再度お試しください💦");
+      }
+    }
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    if (!confirm("この予定を削除しますか？")) return;
+
+    // 楽観的アップデート
+    setEvents(prev => prev.filter(ev => ev.id !== id));
+    setScanResult(prev => prev ? prev.filter(ev => ev.id !== id) : null);
+
+    if (user) {
+      try {
+        const docRef = doc(db, `users/${user.uid}/events`, id);
+        await deleteDoc(docRef);
+      } catch (error) {
+        console.error("Firestore削除エラー:", error);
+        setErrorMessage("予定の削除に失敗しました。再度お試しください💦");
+      }
+    }
+  };
+
+  // ---------------------------------------------
+  // 画面レンダリングの分岐
+  // ---------------------------------------------
+
+  if (isAuthLoading) {
+    return <div className="min-h-screen bg-[#FDFBF9] flex items-center justify-center font-sans text-stone-500">読み込み中...</div>;
+  }
+
+  // 【未ログイン時】のLP兼ログイン画面（メール・パスワード対応）
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#FDFBF9] flex flex-col items-center justify-center font-sans text-stone-700 p-4">
+        <div className="w-20 h-20 bg-orange-200 rounded-full flex items-center justify-center text-orange-700 font-bold text-4xl mb-6 shadow-sm">お</div>
+        <h1 className="text-2xl font-extrabold text-stone-800 mb-2">おたよりカレンダー</h1>
+        <p className="text-sm text-stone-500 mb-8 text-center max-w-xs leading-relaxed">
+          園や学校のプリントをパシャッと撮るだけ。<br/>AIが予定を自動でカレンダーに登録します。
+        </p>
+
+        <div className="w-full max-w-sm bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+          <h2 className="text-lg font-bold text-stone-700 mb-4 text-center">
+            {isSignUpMode ? '新規アカウント登録' : 'ログインして始める'}
+          </h2>
+
+          {authError && (
+            <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl border border-rose-100 text-center">
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+            <div>
+              <input 
+                type="email" 
+                placeholder="メールアドレス" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition"
+              />
+            </div>
+            <div>
+              <input 
+                type="password" 
+                placeholder="パスワード（6文字以上）" 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition"
+              />
+            </div>
+            <button 
+              type="submit"
+              className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition active:scale-95 shadow-sm"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              {isSignUpMode ? 'メールアドレスで登録' : 'ログイン'}
+            </button>
+          </form>
+
+          <div className="relative flex items-center justify-center mb-6">
+            <div className="border-t border-stone-200 w-full"></div>
+            <span className="bg-white px-3 text-xs text-stone-400 absolute">または</span>
+          </div>
+
+          <button 
+            onClick={handleGoogleLogin}
+            className="w-full bg-white border border-stone-200 shadow-sm hover:bg-stone-50 text-stone-600 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition active:scale-95 text-sm mb-4"
+          >
+            <span className="text-lg">G</span> Googleで続ける
+          </button>
+
+          <div className="text-center mt-6">
+            <button 
+              onClick={() => {
+                setIsSignUpMode(!isSignUpMode);
+                setAuthError(null);
+              }}
+              className="text-xs text-stone-500 hover:text-orange-500 font-bold underline-offset-2 hover:underline transition"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {isSignUpMode ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+    );
+  }
+
+  // 【ログイン済み】のメインアプリ画面
+  return (
+    <div className="min-h-screen bg-[#FDFBF9] font-sans text-stone-600 antialiased pb-24">
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-stone-100 px-4 py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-orange-200 rounded-full flex items-center justify-center text-orange-700 font-bold text-lg">お</div>
+            <div>
+              <h1 className="text-base font-bold text-stone-700 tracking-tight">おたよりカレンダー</h1>
+              <p className="text-[10px] text-stone-400 font-medium -mt-0.5">プリントを撮るだけ自動登録</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 cursor-pointer group" onClick={handleLogout} title="クリックでログアウト">
+            <span className="text-[10px] bg-stone-100 border border-stone-200 text-stone-500 px-2 py-1 rounded-full font-bold">無料プラン</span>
+            <div className="w-8 h-8 rounded-full border border-stone-200 overflow-hidden bg-stone-100 flex items-center justify-center group-hover:border-orange-300 transition">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="icon" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold text-stone-400">{user.email?.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 pt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 space-y-6">
+          <div className="bg-stone-100/50 border border-stone-200/60 rounded-3xl p-5 relative overflow-hidden">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-[11px] font-bold text-stone-500 tracking-wider">今月の自動よみとり残回数</h3>
+                <p className="text-lg font-bold text-stone-600 mt-0.5">あと <span className="text-orange-400 text-3xl font-black">{userStatus.remainingScans}</span> 回</p>
+              </div>
+              <button className="bg-white border border-stone-200 hover:bg-stone-50 text-stone-600 font-bold text-xs px-3.5 py-2.5 rounded-full transition active:scale-95">無制限にする</button>
+            </div>
+            <div className="w-full bg-stone-200/50 h-2 rounded-full overflow-hidden">
+              <div className="bg-orange-300 h-full transition-all duration-500 rounded-full" style={{ width: `${(userStatus.remainingScans / userStatus.maxScans) * 100}%` }}></div>
+            </div>
+          </div>
+
+          {errorMessage && (
+            <div className="bg-rose-50 border border-rose-100 text-rose-600 p-4 rounded-2xl text-sm font-bold flex items-center gap-2">
+              ⚠️ {errorMessage}
+            </div>
+          )}
+
+          {fcmError && (
+            <div className="bg-rose-50 border border-rose-100 text-rose-600 p-4 rounded-2xl text-xs font-bold flex items-center gap-2">
+              ⚠️ {fcmError}
+            </div>
+          )}
+
+          {user && permissionStatus === 'default' && (
+            <div className="bg-amber-50/70 border border-amber-100 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🔔</span>
+                <div className="text-left">
+                  <h4 className="text-sm font-bold text-amber-900">大切な予定の前日におお知らせを受け取りますか？</h4>
+                  <p className="text-xs text-amber-700/80 font-medium mt-0.5">プッシュ通知をオンにすると、登録した予定のリマインドが届きます。</p>
+                </div>
+              </div>
+              <button 
+                onClick={requestPermission}
+                disabled={fcmLoading}
+                className="bg-amber-400 hover:bg-amber-500 text-white font-bold text-xs px-5 py-3 rounded-full transition active:scale-95 shadow-sm whitespace-nowrap disabled:opacity-50"
+              >
+                {fcmLoading ? '設定中...' : '通知をオンにする'}
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-extrabold text-stone-700">{year}年 <span className="text-orange-400 text-xl">{month + 1}月</span></h2>
+              <div className="flex gap-1 bg-[#FDFBF9] p-1 rounded-full border border-stone-100">
+                <button onClick={prevMonth} className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold">◀</button>
+                <button onClick={() => setCurrentDate(new Date(2026, 6, 1))} className="text-[11px] px-3 font-bold text-stone-500 hover:bg-white rounded-full transition">今月</button>
+                <button onClick={nextMonth} className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold">▶</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 text-center text-[11px] font-bold text-stone-400 mb-3">
+              <div className="text-rose-300">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div className="text-sky-300">土</div>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {calendarCells.map((date, idx) => {
+                if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
+                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                const isSelected = dateStr === selectedDateStr;
+                const hasEvents = events.some(e => e.date === dateStr);
+                return (
+                  <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10' : 'hover:bg-stone-50 text-stone-600'}`}>
+                    <span>{date.getDate()}</span>
+                    {hasEvents && <span className={`w-1.5 h-1.5 rounded-full absolute bottom-1.5 ${isSelected ? 'bg-orange-500' : 'bg-stone-300'}`}></span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <AdBanner slot="calendar-bottom" />
+
+          {loading && (
+            <div className="bg-stone-50 border-2 border-dashed border-stone-200 rounded-3xl p-8 text-center space-y-4 animate-pulse">
+              <div className="w-14 h-14 bg-white shadow-sm text-stone-400 rounded-full flex items-center justify-center mx-auto text-2xl animate-bounce">📷</div>
+              <p className="text-stone-500 font-bold text-sm">AIがおたよりを読みとって、自動登録しています...</p>
+            </div>
+          )}
+
+          {scanResult && (
+            <div className="bg-[#F8FAF9] border border-teal-100/50 rounded-3xl p-6 shadow-sm space-y-5 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-stone-200/50 pb-3">
+                <div>
+                  <h3 className="font-bold text-teal-600 text-base flex items-center gap-2"><span>✨</span> カレンダーに自動登録しました！</h3>
+                  <p className="text-xs text-stone-400 mt-1">以下の内容で登録しました。ここから直接修正も可能です。</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {scanResult.map((ev) => (
+                  <div key={ev.id} className="bg-white p-4 rounded-2xl border border-stone-100 focus-within:border-teal-300 focus-within:shadow-sm transition-all">
+                    <div className="flex gap-2 mb-2">
+                      <input type="text" value={ev.date} onChange={(e) => handleUpdateEvent(ev.id, 'date', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none w-28 focus:ring-1 focus:ring-teal-200" />
+                      <select value={ev.category} onChange={(e) => handleUpdateEvent(ev.id, 'category', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
+                        <option value="school">学校・園</option><option value="event">行事</option><option value="medical">保健</option>
+                      </select>
+                    </div>
+                    <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm mb-2 focus:border-teal-300 focus:ring-0" />
+                    <textarea value={ev.details} onChange={(e) => handleUpdateEvent(ev.id, 'details', e.target.value)} className="w-full text-[11px] text-stone-500 border-none p-2 resize-none h-14 bg-stone-50 rounded-xl focus:ring-1 focus:ring-teal-200" />
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2">
+                <button onClick={() => setScanResult(null)} className="w-full py-3.5 bg-teal-400 hover:bg-teal-500 text-white font-bold rounded-full transition active:scale-95 text-sm shadow-sm">確認完了（閉じる）</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 text-center">
+            <h3 className="font-bold text-stone-500 text-xs text-left mb-3">かんたん登録</h3>
+            <label className="w-full py-7 px-4 bg-orange-200 hover:bg-orange-300 text-orange-900 rounded-3xl font-black text-base transition-all active:scale-95 flex flex-col items-center justify-center gap-2 group cursor-pointer">
+              <span className="text-3xl group-hover:scale-110 transition-transform opacity-80">📷</span>
+              <div>
+                <p className="text-sm font-bold">プリントを撮る</p>
+                <p className="text-[10px] text-orange-700/80 font-medium mt-1">カメラ / フォルダから選ぶ</p>
+              </div>
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={loading} />
+            </label>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 flex-1 min-h-[300px] flex flex-col">
+            <div className="border-b border-stone-100 pb-3 mb-4 flex items-center justify-between">
+              <div><h3 className="font-bold text-stone-600 text-sm">この日の予定</h3><p className="text-[11px] text-orange-400 font-bold mt-0.5">{selectedDateStr}</p></div>
+            </div>
+            {filteredEvents.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-300 my-auto"><span className="text-3xl mb-2 opacity-30">☕</span><p className="text-[11px] font-bold">予定はありません</p></div>
+            ) : (
+              <div className="space-y-3 flex-1 overflow-y-auto">
+                {filteredEvents.map((ev) => (
+                  <div key={ev.id} className="p-3.5 bg-[#FDFBF9] rounded-2xl border border-stone-100 relative group transition-all duration-250">
+                    <div className="flex justify-between items-start">
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
+                        {ev.category === 'school' && '🏫 学校・園'}{ev.category === 'event' && '🎈 行事・イベント'}{ev.category === 'medical' && '🏥 保健・病院'}
+                      </span>
+                      <button 
+                        onClick={() => handleDeleteEvent(ev.id)}
+                        className="text-stone-400 hover:text-rose-400 text-xs p-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                        title="予定を削除"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                    <h4 className="font-bold text-stone-700 text-sm mt-2.5">{ev.title}</h4>
+                    <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed whitespace-pre-wrap">{ev.details}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <AdBanner slot="sidebar-bottom" />
         </div>
       </main>
+
+      {/* スキャン上限到達モーダル */}
+      {isLimitModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-xl animate-scaleIn text-center relative overflow-hidden">
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto text-3xl mb-4 text-orange-600">
+              🔔
+            </div>
+            <h3 className="text-lg font-black text-stone-800 mb-3">今月のよみとり上限に達しました</h3>
+            <p className="text-xs text-stone-500 leading-relaxed mb-6">
+              いつもおたよりカレンダーをご利用いただきありがとうございます。無料プランでの今月のスキャン上限（10回）に達しました。月額480円のプレミアムプランに登録すると、残り回数を気にせず何枚でもスキャンできるようになります！
+            </p>
+            <div className="space-y-2.5">
+              <button 
+                onClick={() => alert("ご興味を持っていただきありがとうございます！プレミアムプランは現在準備中です。公開まで楽しみにお待ちください♪")}
+                className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition active:scale-95 shadow-sm"
+              >
+                プレミアムプランを試してみる（準備中）
+              </button>
+              <button 
+                onClick={() => setIsLimitModalOpen(false)}
+                className="w-full bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3 px-4 rounded-xl text-xs transition active:scale-95"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

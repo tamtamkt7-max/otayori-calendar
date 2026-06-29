@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザー個人のドキュメントと、その配下のサブコレクションに対する制限
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // users/{userId}/events 配下の予定データも、そのユーザー本人のみアクセス可能
+      match /events/{eventId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}
