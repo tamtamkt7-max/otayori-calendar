@@ -83,7 +83,21 @@ export async function POST(req: Request) {
     // Base64データとMIMEタイプの抽出
     const mimeTypeMatch = image.match(/data:(.*?);base64,/);
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
+
+    // セキュリティ対策: 画像MIMEタイプの制限 (拡張子制限に相当)
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedMimeTypes.includes(mimeType)) {
+      return NextResponse.json({ error: '許可されていないファイル形式です。画像（JPEG/PNG/WEBP/GIF）のみアップロード可能です。' }, { status: 400 });
+    }
+
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // セキュリティ対策: ファイルサイズ制限 (10MB)
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (buffer.length > MAX_SIZE) {
+      return NextResponse.json({ error: 'ファイルサイズが大きすぎます。10MB以下の画像を指定してください。' }, { status: 400 });
+    }
 
     // Firebase Storageへおたより画像を保存
     let imageUrl: string | null = null;
@@ -98,7 +112,6 @@ export async function POST(req: Request) {
       const file = bucket.file(filename);
 
       const downloadToken = crypto.randomUUID();
-      const buffer = Buffer.from(base64Data, 'base64');
       await file.save(buffer, {
         metadata: {
           contentType: mimeType,

@@ -211,13 +211,17 @@ export default function Home() {
   const handleUpgrade = async () => {
     try {
       setLoading(true);
+      const token = await user?.getIdToken();
+      if (!token) {
+        throw new Error('ログインしていません。ログイン後に再度お試しください。');
+      }
+
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.uid,
-          email: user?.email
-        }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       });
       const data = await response.json();
       if (response.ok && data.url) {

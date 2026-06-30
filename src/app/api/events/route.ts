@@ -68,13 +68,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // セキュリティ対策: 入力データのバリデーションと制限
+    const title = (event.title || '').trim();
+    const details = (event.details || '').trim();
+    const category = event.category || 'school';
+    const color = event.color || 'common';
+    const date = event.date || '';
+
+    // 文字長制限
+    if (title.length > 100) {
+      return NextResponse.json({ error: 'タイトルは100文字以内で入力してください。' }, { status: 400 });
+    }
+    if (details.length > 1000) {
+      return NextResponse.json({ error: '詳細は1000文字以内で入力してください。' }, { status: 400 });
+    }
+
+    // 特定のパラメータ値の制限 (ホワイトリスト)
+    const allowedCategories = ['school', 'event', 'medical'];
+    if (!allowedCategories.includes(category)) {
+      return NextResponse.json({ error: '無効なカテゴリです。' }, { status: 400 });
+    }
+
+    const allowedColors = ['common', 'father', 'mother', 'child'];
+    if (!allowedColors.includes(color)) {
+      return NextResponse.json({ error: '無効なカラーです。' }, { status: 400 });
+    }
+
+    // 日付フォーマット制限 (YYYY-MM-DD形式)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (date && !dateRegex.test(date)) {
+      return NextResponse.json({ error: '無効な日付形式です。YYYY-MM-DDで指定してください。' }, { status: 400 });
+    }
+
+    // HTMLタグのサニタイズ (XSS攻撃の防止)
+    const sanitizeHtml = (str: string) => str.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const cleanTitle = sanitizeHtml(title);
+    const cleanDetails = sanitizeHtml(details);
+
     // 予定の保存 (新規作成 or 編集)
     const eventData = {
-      title: event.title || '',
-      date: event.date || '',
-      details: event.details || '',
-      category: event.category || 'school',
-      color: event.color || 'common',
+      title: cleanTitle,
+      date: date,
+      details: cleanDetails,
+      category: category,
+      color: color,
       imageUrl: event.imageUrl || null,
       remindThreeDays: !!event.remindThreeDays,
       remindOneDay: !!event.remindOneDay,
