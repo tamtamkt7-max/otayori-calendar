@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 import Stripe from 'stripe';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { sendWelcomeEmail, sendCancellationEmail } from '../../../../lib/resend';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
   // @ts-ignore
@@ -74,9 +75,17 @@ export async function POST(req: Request) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.metadata?.userId;
+      const email = session.customer_details?.email || session.customer_email;
 
       if (userId) {
         await updateUserPlan(userId, 'premium');
+        if (email) {
+          try {
+            await sendWelcomeEmail(email);
+          } catch (mailErr: any) {
+            console.error("[Webhook] Failed to send welcome email:", mailErr.message);
+          }
+        }
       } else {
         console.warn("[Webhook] userId not found in session metadata");
       }
@@ -110,6 +119,17 @@ export async function POST(req: Request) {
 
       if (userId) {
         await updateUserPlan(userId, 'free');
+        if (subscription.customer) {
+          try {
+            const customer = await stripe.customers.retrieve(subscription.customer as string);
+            const email = (customer as any).email;
+            if (email) {
+              await sendCancellationEmail(email);
+            }
+          } catch (mailErr: any) {
+            console.error("[Webhook] Failed to send cancellation email:", mailErr.message);
+          }
+        }
       } else {
         console.warn("[Webhook] userId not found in subscription metadata on cancellation");
       }
