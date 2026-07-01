@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -200,6 +201,7 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
+    Sentry.captureException(error);
     return NextResponse.json({ error: error.message || "解析エラー" }, { status: 500 });
   }
 }

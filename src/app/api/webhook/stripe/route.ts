@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import Stripe from 'stripe';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -35,6 +36,20 @@ function getFirestoreInstance() {
   }
 }
 
+// ユーザーのプラン状態をFirestoreで更新するヘルパー
+async function updateUserPlan(userId: string, plan: 'premium' | 'free') {
+  const db = getFirestoreInstance();
+  if (!db) {
+    throw new Error("Database connection failed during plan update");
+  }
+  const userRef = db.collection('users').doc(userId);
+  await userRef.set({
+    plan: plan,
+    premiumUpdatedAt: new Date().toISOString()
+  }, { merge: true });
+  console.log(`[Webhook] Successfully updated user ${userId} plan to ${plan}`);
+}
+
 export async function POST(req: Request) {
   const bodyText = await req.text();
   const sig = req.headers.get('stripe-signature') || '';
@@ -54,36 +69,55 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
-  // 決済成功イベントを処理
-  if (event.type === 'checkout.session.completed' || event.type === 'invoice.payment_succeeded') {
-    const session = event.data.object as Stripe.Checkout.Session;
+  // 各決済・契約関連イベントを処理
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const userId = session.metadata?.userId;
+
+      if (userId) {
+        await updateUserPlan(userId, 'premium');
+      } else {
+        console.warn("[Webhook] userId not found in session metadata");
+      }
+    } 
     
-    // metadata から userId を抽出
-    const userId = session.metadata?.userId;
+    else if (event.type === 'invoice.payment_succeeded') {
+      const invoice = event.data.object as Stripe.Invoice;
+      let userId = invoice.metadata?.userId;
 
-    if (userId) {
-      const db = getFirestoreInstance();
-      if (!db) {
-        console.error("Database connection failed during webhook plan update");
-        return NextResponse.json({ error: 'Database error' }, { status: 500 });
+      // もしInvoiceのメタデータにない場合、関連するサブスクリプションから取得
+      const subscriptionId = (invoice as any).subscription as string | undefined;
+      if (!userId && subscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          userId = subscription.metadata?.userId;
+        } catch (err: any) {
+          console.error(`[Webhook] Failed to retrieve subscription details:`, err.message);
+        }
       }
 
-      try {
-        // 該当ユーザーのプランを premium に更新
-        const userRef = db.collection('users').doc(userId);
-        await userRef.set({
-          plan: 'premium',
-          premiumUpdatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        console.log(`[Webhook] Successfully updated user ${userId} plan to premium`);
-      } catch (dbErr: any) {
-        console.error(`Failed to update user plan in Firestore:`, dbErr);
-        return NextResponse.json({ error: 'Firestore update failed' }, { status: 500 });
+      if (userId) {
+        await updateUserPlan(userId, 'premium');
+      } else {
+        console.warn("[Webhook] userId not found in invoice or subscription metadata");
       }
-    } else {
-      console.warn("[Webhook] userId not found in session metadata");
+    } 
+    
+    else if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription;
+      const userId = subscription.metadata?.userId;
+
+      if (userId) {
+        await updateUserPlan(userId, 'free');
+      } else {
+        console.warn("[Webhook] userId not found in subscription metadata on cancellation");
+      }
     }
+  } catch (err: any) {
+    console.error(`[Webhook] Error processing event ${event.type}:`, err.message);
+    Sentry.captureException(err);
+    return NextResponse.json({ error: `Processing failed: ${err.message}` }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

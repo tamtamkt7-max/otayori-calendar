@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -186,6 +187,7 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Save Event API Error:", error);
+    Sentry.captureException(error);
     return NextResponse.json({ error: error.message || "予定の保存に失敗しました" }, { status: 500 });
   }
 }
