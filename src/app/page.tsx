@@ -35,6 +35,8 @@ export default function Home() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1));
   const [selectedDateStr, setSelectedDateStr] = useState<string>("2026-07-10");
   const [events, setEvents] = useState<any[]>([]);
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+  const [isGoogleLinked, setIsGoogleLinked] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<any[] | null>(null);
@@ -70,12 +72,13 @@ export default function Home() {
           });
           setEvents(fetchedEvents);
 
-          // 2. ユーザーステータス（プラン・スキャン回数）の同期
+          // 2. ユーザーステータス（プラン・スキャン回数・Googleカレンダー連携）の同期
           const { getDoc } = await import('firebase/firestore');
           const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
             const isPremium = userData.plan === 'premium';
+            setIsGoogleLinked(!!userData.googleCalendarConnected);
             
             // 日本時間の現在年月を取得してリセット判定
             const now = new Date();
@@ -101,6 +104,22 @@ export default function Home() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // URLクエリパラメータの処理 (Googleカレンダー連携の成否判定など)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const syncStatus = params.get('google-sync');
+    const reason = params.get('reason');
+
+    if (syncStatus === 'success') {
+      alert("Googleカレンダーとの連携に成功しました！🎉\n今後追加・更新された予定は自動的にGoogleカレンダーにも同期されます。");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setIsGoogleLinked(true);
+    } else if (syncStatus === 'error') {
+      alert(`Googleカレンダーとの連携に失敗しました😢\n理由: ${reason || '不明なエラー'}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   // Googleログイン処理
@@ -235,6 +254,59 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- Googleカレンダー連携処理 ---
+  const handleGoogleCalendarLink = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/auth/google-calendar?userId=${user.uid}`);
+      const data = await response.json();
+      if (response.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || '連携URLの取得に失敗しました。');
+      }
+    } catch (err: any) {
+      console.error("Google Calendar Link Error:", err);
+      alert(err.message || "Googleカレンダー連携画面の生成中にエラーが発生しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Google連携解除処理
+  const handleDisconnectGoogle = async () => {
+    if (!confirm("Googleカレンダーとの連携を解除しますか？")) return;
+    try {
+      setLoading(true);
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'users', user!.uid), { googleCalendarConnected: false }, { merge: true });
+      setIsGoogleLinked(false);
+      alert("Googleカレンダーとの連携を解除しました。");
+    } catch (err) {
+      console.error("Disconnect Google Error:", err);
+      alert("解除に失敗しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 週表示用の日付セルリスト生成
+  const getWeekCells = () => {
+    const selected = new Date(selectedDateStr);
+    const dayOfWeek = selected.getDay(); // 0:日 ~ 6:土
+    const startOfWeek = new Date(selected);
+    startOfWeek.setDate(selected.getDate() - dayOfWeek);
+
+    const weekCells = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(startOfWeek);
+      day.setDate(startOfWeek.getDate() + i);
+      weekCells.push(day);
+    }
+    return weekCells;
   };
 
   // --- AIスキャンロジック ---
@@ -450,6 +522,24 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {isGoogleLinked ? (
+              <button 
+                onClick={handleDisconnectGoogle}
+                className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1.5 rounded-full font-extrabold flex items-center gap-1 shadow-sm transition active:scale-95"
+                title="クリックでGoogle連携を解除"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Google同期中
+              </button>
+            ) : (
+              <button 
+                onClick={handleGoogleCalendarLink}
+                disabled={loading}
+                className="text-[10px] bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-full font-extrabold flex items-center gap-1 shadow-sm transition active:scale-95"
+              >
+                📅 Google連携
+              </button>
+            )}
             {!userStatus.isPremium ? (
               <button 
                 onClick={handleUpgrade}
@@ -529,19 +619,71 @@ export default function Home() {
           )}
 
           <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-extrabold text-stone-700">{year}年 <span className="text-orange-400 text-xl">{month + 1}月</span></h2>
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-extrabold text-stone-700">
+                  {viewMode === 'month' ? `${year}年 ${month + 1}月` : 'スケジュール'}
+                </h2>
+                <div className="flex rounded-full bg-stone-100 p-0.5 border border-stone-200/50 text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('month')}
+                    className={`px-3 py-1 rounded-full transition-all ${viewMode === 'month' ? 'bg-white text-stone-700 shadow-sm' : 'text-stone-400'}`}
+                  >
+                    月表示
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('week')}
+                    className={`px-3 py-1 rounded-full transition-all ${viewMode === 'week' ? 'bg-white text-stone-700 shadow-sm' : 'text-stone-400'}`}
+                  >
+                    週表示
+                  </button>
+                </div>
+              </div>
               <div className="flex gap-1 bg-[#FDFBF9] p-1 rounded-full border border-stone-100">
-                <button onClick={prevMonth} className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold">◀</button>
-                <button onClick={() => setCurrentDate(new Date(2026, 6, 1))} className="text-[11px] px-3 font-bold text-stone-500 hover:bg-white rounded-full transition">今月</button>
-                <button onClick={nextMonth} className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold">▶</button>
+                <button 
+                  onClick={() => {
+                    if (viewMode === 'month') {
+                      prevMonth();
+                    } else {
+                      const d = new Date(selectedDateStr);
+                      d.setDate(d.getDate() - 7);
+                      setSelectedDateStr(d.toISOString().split('T')[0]);
+                      setCurrentDate(d);
+                    }
+                  }} 
+                  className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold"
+                >
+                  ◀
+                </button>
+                <button onClick={() => {
+                  const today = new Date();
+                  setCurrentDate(today);
+                  setSelectedDateStr(today.toISOString().split('T')[0]);
+                }} className="text-[11px] px-3 font-bold text-stone-500 hover:bg-white rounded-full transition">今日</button>
+                <button 
+                  onClick={() => {
+                    if (viewMode === 'month') {
+                      nextMonth();
+                    } else {
+                      const d = new Date(selectedDateStr);
+                      d.setDate(d.getDate() + 7);
+                      setSelectedDateStr(d.toISOString().split('T')[0]);
+                      setCurrentDate(d);
+                    }
+                  }} 
+                  className="p-2 hover:bg-white rounded-full transition text-stone-400 font-bold"
+                >
+                  ▶
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-7 text-center text-[11px] font-bold text-stone-400 mb-3">
               <div className="text-rose-300">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div className="text-sky-300">土</div>
             </div>
             <div className="grid grid-cols-7 gap-1">
-              {calendarCells.map((date, idx) => {
+              {(viewMode === 'month' ? calendarCells : getWeekCells()).map((date, idx) => {
                 if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
                 const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                 const isSelected = dateStr === selectedDateStr;
@@ -549,10 +691,10 @@ export default function Home() {
                 const hasEvents = dayEvents.length > 0;
                 const uniqueColors = Array.from(new Set(dayEvents.map(e => e.color || 'common')));
                 return (
-                  <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10' : 'hover:bg-stone-50 text-stone-600'}`}>
-                    <span>{date.getDate()}</span>
+                  <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300/30' : 'hover:bg-stone-50 text-stone-600'}`}>
+                    <span className="z-10">{date.getDate()}</span>
                     {hasEvents && (
-                      <div className="absolute bottom-1.5 flex gap-0.5 justify-center">
+                      <div className="absolute bottom-1.5 flex gap-0.5 justify-center z-10">
                         {uniqueColors.map(col => {
                           let dotColor = 'bg-orange-400';
                           if (col === 'father') dotColor = 'bg-sky-400';
