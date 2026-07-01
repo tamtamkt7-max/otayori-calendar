@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { checkRateLimit } from '../../../lib/rateLimit';
+import { syncEventToGoogle, deleteEventFromGoogle } from '../../../lib/googleCalendar';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // firebase-admin をリクエスト時に初期化するヘルパー
@@ -92,6 +93,19 @@ export async function POST(req: Request) {
     });
 
     if (action === 'delete') {
+      // Googleカレンダーからの削除
+      try {
+        const docSnap = await userEventRef.get();
+        if (docSnap.exists) {
+          const googleEventId = docSnap.data()?.googleEventId;
+          if (googleEventId) {
+            await deleteEventFromGoogle(db, userId, googleEventId);
+          }
+        }
+      } catch (err: any) {
+        console.error("Failed to delete event from Google Calendar:", err.message);
+      }
+
       // 予定の削除
       batch.delete(userEventRef);
       await batch.commit();
@@ -135,6 +149,36 @@ export async function POST(req: Request) {
     const cleanTitle = sanitizeHtml(title);
     const cleanDetails = sanitizeHtml(details);
 
+    // 既存の googleEventId があれば取得、ない場合は新規作成で同期したものを保存する
+    let googleEventId = event.googleEventId || null;
+    
+    if (!googleEventId) {
+      try {
+        const existingDoc = await userEventRef.get();
+        if (existingDoc.exists) {
+          googleEventId = existingDoc.data()?.googleEventId || null;
+        }
+      } catch (err) {
+        console.error("Failed to read existing googleEventId:", err);
+      }
+    }
+
+    // Google Calendarとの同期
+    try {
+      const syncResultId = await syncEventToGoogle(db, userId, {
+        id: eventId,
+        title: cleanTitle,
+        date: date,
+        details: cleanDetails,
+        googleEventId: googleEventId
+      });
+      if (syncResultId) {
+        googleEventId = syncResultId;
+      }
+    } catch (googleSyncErr: any) {
+      console.error("Failed to sync event with Google Calendar:", googleSyncErr.message);
+    }
+
     // 予定の保存 (新規作成 or 編集)
     const eventData = {
       title: cleanTitle,
@@ -143,6 +187,7 @@ export async function POST(req: Request) {
       category: category,
       color: color,
       imageUrl: event.imageUrl || null,
+      googleEventId: googleEventId, // GoogleカレンダーのイベントIDを紐付け
       remindThreeDays: !!event.remindThreeDays,
       remindOneDay: !!event.remindOneDay,
       remindCustom: !!event.remindCustom,
