@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { checkRateLimit } from '../../../lib/rateLimit';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
   // @ts-ignore
@@ -59,32 +60,16 @@ export async function POST(req: Request) {
     }
 
     // 2. レートリミット（回数制限）チェック: 過去1分間に最大3回
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    const rateLimitRef = admin.db.collection('users').doc(userId).collection('security').doc('checkoutLimits');
+    const isAllowed = await checkRateLimit({
+      db: admin.db,
+      key: userId,
+      actionName: 'checkout',
+      limit: 3,
+      windowMs: 60000
+    });
 
-    let attempts: number[] = [];
-    try {
-      const doc = await rateLimitRef.get();
-      if (doc.exists) {
-        const data = doc.data();
-        attempts = (data?.attempts || []).filter((timestamp: number) => timestamp > oneMinuteAgo);
-      }
-    } catch (dbErr) {
-      console.error("Failed to fetch rate limit data:", dbErr);
-    }
-
-    if (attempts.length >= 3) {
-      console.warn(`[Security Alert] Rate limit exceeded for user ${userId}. Requests: ${attempts.length}`);
+    if (!isAllowed) {
       return NextResponse.json({ error: 'リクエストが多すぎます。しばらく時間を置いてから再度お試しください。' }, { status: 429 });
-    }
-
-    // 新しい試行を追加して保存
-    attempts.push(now);
-    try {
-      await rateLimitRef.set({ attempts }, { merge: true });
-    } catch (dbErr) {
-      console.error("Failed to update rate limit data:", dbErr);
     }
 
     const reqHeaders = new Headers(req.headers);
@@ -114,6 +99,11 @@ export async function POST(req: Request) {
       cancel_url: `${origin}/`,
       metadata: {
         userId: userId, // Webhookでユーザーを特定するために必須
+      },
+      subscription_data: {
+        metadata: {
+          userId: userId,
+        },
       },
       customer_email: email || undefined, // ログイン中のメアドを自動入力
     });

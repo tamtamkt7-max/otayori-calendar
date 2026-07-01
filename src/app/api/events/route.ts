@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { checkRateLimit } from '../../../lib/rateLimit';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // firebase-admin をリクエスト時に初期化するヘルパー
@@ -44,6 +45,34 @@ export async function POST(req: Request) {
     const db = getFirestoreInstance();
     if (!db) {
       return NextResponse.json({ error: 'データベースに接続できませんでした（設定エラー）' }, { status: 500 });
+    }
+
+    // セキュリティ対策: レートリミット（1分間に最大15回、1日に最大100回）
+    const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
+    const rateLimitKey = userId || clientIp;
+
+    const minuteAllowed = await checkRateLimit({
+      db: db,
+      key: rateLimitKey,
+      actionName: 'events_minute',
+      limit: 15,
+      windowMs: 60000
+    });
+
+    if (!minuteAllowed) {
+      return NextResponse.json({ error: 'リクエストが多すぎます。少し時間をおいてから再度お試しください。' }, { status: 429 });
+    }
+
+    const dayAllowed = await checkRateLimit({
+      db: db,
+      key: rateLimitKey,
+      actionName: 'events_day',
+      limit: 100,
+      windowMs: 86400000
+    });
+
+    if (!dayAllowed) {
+      return NextResponse.json({ error: '1日のリクエスト上限に達しました。' }, { status: 429 });
     }
 
     const eventId = event.id;

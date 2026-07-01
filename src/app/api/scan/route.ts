@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { checkRateLimit } from '../../../lib/rateLimit';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
@@ -49,6 +50,34 @@ export async function POST(req: Request) {
     const firestore = getFirestoreInstance();
     if (!firestore) {
       return NextResponse.json({ error: 'データベースに接続できませんでした（設定エラー）' }, { status: 500 });
+    }
+
+    // セキュリティ対策: レートリミット（1分間に最大5回、1日に最大30回）
+    const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
+    const rateLimitKey = userId || clientIp;
+
+    const minuteAllowed = await checkRateLimit({
+      db: firestore,
+      key: rateLimitKey,
+      actionName: 'scan_minute',
+      limit: 5,
+      windowMs: 60000
+    });
+
+    if (!minuteAllowed) {
+      return NextResponse.json({ error: 'リクエストが多すぎます。少し時間をおいてから再度お試しください。' }, { status: 429 });
+    }
+
+    const dayAllowed = await checkRateLimit({
+      db: firestore,
+      key: rateLimitKey,
+      actionName: 'scan_day',
+      limit: 30,
+      windowMs: 86400000
+    });
+
+    if (!dayAllowed) {
+      return NextResponse.json({ error: '1日のリクエスト上限に達しました。明日再度お試しください。' }, { status: 429 });
     }
 
     // 1. スキャン前の利用回数チェック
