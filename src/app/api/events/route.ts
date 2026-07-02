@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       .get();
 
     const batch = db.batch();
-    pendingRemindersQuery.forEach((doc) => {
+    pendingRemindersQuery.forEach((doc: any) => {
       batch.delete(doc.ref);
     });
 
