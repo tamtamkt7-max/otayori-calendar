@@ -75,11 +75,11 @@ export async function POST(req: Request) {
     const reqHeaders = new Headers(req.headers);
     const origin = reqHeaders.get('origin') || 'http://localhost:3000';
 
-    // 3. Stripe Checkoutセッションの生成
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
+    // 3. Stripe Price IDの取得とCheckoutセッションの生成
+    const priceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+    const lineItem = priceId
+      ? { price: priceId, quantity: 1 }
+      : {
           price_data: {
             currency: 'jpy',
             product_data: {
@@ -92,8 +92,11 @@ export async function POST(req: Request) {
             },
           },
           quantity: 1,
-        },
-      ],
+        };
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [lineItem],
       mode: 'subscription',
       success_url: `${origin}/?session_id={CHECKOUT_SESSION_ID}&checkout=success`,
       cancel_url: `${origin}/`,
