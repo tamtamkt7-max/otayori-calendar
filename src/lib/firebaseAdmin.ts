@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getAuth, Auth } from 'firebase-admin/auth';
+import { sanitizeEnvVar } from './envSanitizer';
 
 // グローバルスコープでのキャッシュ退避定義 (二重初期化の完全防止)
 declare global {
@@ -50,7 +51,7 @@ try {
     global.firebaseAdminApp = app;
     console.log("[Firebase Admin Helper] Reusing existing SDK Firebase Admin instance.");
   } else {
-    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
+    const serviceAccountStr = sanitizeEnvVar(process.env.FIREBASE_SERVICE_ACCOUNT);
     if (!serviceAccountStr) {
       console.warn("[Firebase Admin Helper] FIREBASE_SERVICE_ACCOUNT is not set in env variables. Skipping initialization during build/start.");
       initError = new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");

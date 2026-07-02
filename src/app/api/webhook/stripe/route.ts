@@ -5,10 +5,23 @@ import * as Sentry from '@sentry/nextjs';
 import Stripe from 'stripe';
 import { getFirebaseAdmin } from '../../../../lib/firebaseAdmin';
 import { sendWelcomeEmail, sendCancellationEmail } from '../../../../lib/resend';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
-  // @ts-ignore
-  apiVersion: '2023-10-16'
-});
+import { sanitizeEnvVar } from '../../../../lib/envSanitizer';
+
+let stripeInstance: Stripe | null = null;
+
+function getStripeClient(): Stripe {
+  if (stripeInstance) return stripeInstance;
+  const rawKey = process.env.STRIPE_SECRET_KEY;
+  const sanitizedKey = sanitizeEnvVar(rawKey);
+  if (!sanitizedKey) {
+    throw new Error("STRIPE_SECRET_KEY is empty or missing in webhook route.");
+  }
+  stripeInstance = new Stripe(sanitizedKey, {
+    // @ts-ignore
+    apiVersion: '2023-10-16'
+  });
+  return stripeInstance;
+}
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -39,7 +52,8 @@ export async function POST(req: Request) {
       console.warn("⚠️ STRIPE_WEBHOOK_SECRET is not set. Skipping signature verification (debug/test only).");
       event = JSON.parse(bodyText) as Stripe.Event;
     } else {
-      event = stripe.webhooks.constructEvent(bodyText, sig, webhookSecret);
+      const stripe = getStripeClient();
+      event = stripe.webhooks.constructEvent(bodyText, sig, sanitizeEnvVar(webhookSecret));
     }
   } catch (err: any) {
     console.error(`⚠️ Webhook signature verification failed:`, err.message);

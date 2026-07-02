@@ -4,27 +4,55 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
 import { checkRateLimit } from '../../../lib/rateLimit';
+import { sanitizeEnvVar } from '../../../lib/envSanitizer';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
-  // @ts-ignore
-  apiVersion: '2023-10-16'
-});
+let stripeInstance: Stripe | null = null;
+
+// Stripe SDK インスタンスの遅延・安全初期化ヘルパー
+function getStripeClient(): Stripe {
+  if (stripeInstance) return stripeInstance;
+
+  const rawKey = process.env.STRIPE_SECRET_KEY;
+  const sanitizedKey = sanitizeEnvVar(rawKey);
+
+  if (!sanitizedKey) {
+    throw new Error("STRIPE_SECRET_KEY is not defined or empty in environment variables.");
+  }
+
+  stripeInstance = new Stripe(sanitizedKey, {
+    // @ts-ignore
+    apiVersion: '2023-10-16'
+  });
+  return stripeInstance;
+}
 
 export async function POST(req: Request) {
   try {
-    console.log("[checkout API] Received request. Checking environment variables:", {
-      STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ? `${process.env.STRIPE_SECRET_KEY.substring(0, 7)}...` : 'undefined',
-      NEXT_PUBLIC_STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || 'undefined',
-      FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT ? 'present' : 'undefined'
-    });
+    console.log("[checkout API] Received request. Running environmental validation.");
 
+    // 1. Firebase Admin インスタンスの取得
     const admin = getFirebaseAdmin();
     if (admin.error || !admin.db) {
       console.error("[checkout API] Firebase Admin is unavailable:", admin.error);
-      return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
+      return NextResponse.json({ 
+        error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}`,
+        stack: admin.error?.stack || null
+      }, { status: 500 });
     }
 
-    // 1. Firebase ID Token の検証
+    // 2. Stripe クライアントの安全ロード（例外を POST 内で確実にキャッチ）
+    let stripe: Stripe;
+    try {
+      stripe = getStripeClient();
+    } catch (stripeInitErr: any) {
+      console.error("[checkout API] Stripe Client initialization failed:", stripeInitErr);
+      return NextResponse.json({ 
+        error: `Stripe初期化エラー: ${stripeInitErr.message}`,
+        stack: stripeInitErr.stack || null
+      }, { status: 500 });
+    }
+
+    // 3. Firebase ID Token の検証
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: '認証が必要です。' }, { status: 401 });
@@ -38,12 +66,15 @@ export async function POST(req: Request) {
       const decodedToken = await admin.auth.verifyIdToken(idToken);
       userId = decodedToken.uid;
       email = decodedToken.email;
-    } catch (authErr) {
+    } catch (authErr: any) {
       console.error("ID Token verification failed:", authErr);
-      return NextResponse.json({ error: '認証トークンが無効または期限切れです。' }, { status: 401 });
+      return NextResponse.json({ 
+        error: '認証トークンが無効または期限切れです。',
+        details: authErr.message
+      }, { status: 401 });
     }
 
-    // 2. レートリミット（回数制限）チェック: 過去1分間に最大3回
+    // 4. レートリミットチェック (過去1分間に最大3回)
     const isAllowed = await checkRateLimit({
       db: admin.db,
       key: userId,
@@ -59,8 +90,16 @@ export async function POST(req: Request) {
     const reqHeaders = new Headers(req.headers);
     const origin = reqHeaders.get('origin') || 'http://localhost:3000';
 
-    // 3. Stripe Price IDの取得とCheckoutセッションの生成
-    const priceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+    // 5. Price IDの厳格な取得とサニタイズ
+    const rawPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+    const priceId = sanitizeEnvVar(rawPriceId);
+    
+    console.log("[checkout API] Sanitized Price ID verification:", {
+      originalLength: rawPriceId ? rawPriceId.length : 0,
+      sanitizedLength: priceId.length,
+      startsWithPrice: priceId.startsWith('price_')
+    });
+
     const isPriceIdValid = priceId && priceId.startsWith('price_');
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = isPriceIdValid
       ? { price: priceId, quantity: 1 }
@@ -79,6 +118,7 @@ export async function POST(req: Request) {
           quantity: 1,
         };
 
+    // 6. Stripe Checkout セッション生成
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [lineItem],
@@ -86,24 +126,22 @@ export async function POST(req: Request) {
       success_url: `${origin}/?session_id={CHECKOUT_SESSION_ID}&checkout=success`,
       cancel_url: `${origin}/`,
       metadata: {
-        userId: userId, // Webhookでユーザーを特定するために必須
+        userId: userId,
       },
       subscription_data: {
         metadata: {
           userId: userId,
         },
       },
-      customer_email: email || undefined, // ログイン中のメアドを自動入力
+      customer_email: email || undefined,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (error: any) {
-    console.error("[checkout API] Critical Stripe Session Creation Error Details:", error, {
-      message: error?.message,
-      code: error?.code,
-      stack: error?.stack,
-      rawError: JSON.stringify(error)
-    });
-    return NextResponse.json({ error: `決済セッションの生成に失敗しました: ${error?.message || 'Unknown Stripe Error'}` }, { status: 500 });
+    console.error("[checkout API] Ultimate Safe Wrap Catch:", error);
+    return NextResponse.json({ 
+      error: `決済セッションの生成に失敗しました: ${error?.message || 'Unknown Stripe Error'}`,
+      stack: error?.stack || null
+    }, { status: 500 });
   }
 }
