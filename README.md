@@ -210,6 +210,13 @@ Edge Runtime の誤干渉による Firebase / Stripe 関連 API の実行時強�
    - `api/og` での Edge Runtime の使用に伴う Vercel のビルドエンジンの推論エラーや、配下 API への Edge 適用の干渉を防ぐため、バックエンド API（`checkout`, `events`, `scan`, `webhook/stripe`, `cron/send-reminders`）のすべてのルートファイルにおいて、明示的に Node.js ランタイムを指定しました。
    - これにより、サーバーレス環境で Node.js ネイティブ依存を伴う初期化（Firebase Admin / Stripe インスタンス生成）が Vercel 側で不当に遮断（`FUNCTION_INVOCATION_FAILED`）される問題を完全に解消しました。
 
+### 14. グローバルキャッシュを用いた Firebase Admin シングルトン初期化設計
+サーバーレス環境および Next.js ホットリロード時の Firebase Admin SDK の二重初期化（DEFAULT app already exists）エラーの完全防止策です。
+
+1. **`global` スコープによる App キャッシュ管理**:
+   - Next.js のサーバーサイドコンテキスト再ロードやサーバーレス関数の再利用時に、メモリ上の `global` オブジェクトへ初期化済みの Firebase `App` インスタンスを退避・キャッシュさせるロジックを実装しました。
+   - `getApps()` による既存 SDK 登録の確認と、`global.firebaseAdminApp` によるグローバルキャッシュの双方を評価した上で、未初期化の場合のみ `initializeApp` を走らせることで、複数エントリポイントでの二重初期化エラーによるプロセス例外クラッシュ（`FUNCTION_INVOCATION_FAILED`）を完璧に抑止しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
