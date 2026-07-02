@@ -62,9 +62,23 @@ export async function GET(req: Request) {
     for (const docSnapshot of remindersQuerySnapshot.docs) {
       const reminderId = docSnapshot.id;
       const reminderData = docSnapshot.data();
-      const { uid, fcmTokens, title, body, eventId } = reminderData;
+      const { uid, title, body, eventId } = reminderData;
+      let fcmTokens: string[] = reminderData.fcmTokens || [];
 
-      if (!fcmTokens || fcmTokens.length === 0) {
+      // ユーザーの最新FCMトークンをデータベースから同期取得する (到達率向上のため)
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          const latestTokens = userDoc.data()?.fcmTokens;
+          if (Array.isArray(latestTokens) && latestTokens.length > 0) {
+            fcmTokens = latestTokens;
+          }
+        }
+      } catch (tokenSyncErr) {
+        console.warn(`Failed to sync latest FCM tokens for user ${uid}, fallback to recorded tokens:`, tokenSyncErr);
+      }
+
+      if (fcmTokens.length === 0) {
         // トークンが無い場合はスキップ扱いに更新
         await docSnapshot.ref.update({
           status: 'skipped',
