@@ -124,6 +124,16 @@
 3. 生成された **「測定ID」（例: `G-XXXXXXXXXX`）** をコピーします。
 4. コピーした測定IDを、環境変数 **`NEXT_PUBLIC_GA_ID`** に設定します（Vercelの環境変数および `.env.local` への登録が必要です）。
 
+### 5. PWA (iOS通知最適化) および Google 審査対策の法的ページ設定
+iOS (Safari) における通知の許可基準と、Google OAuth 審査を通過するための法的要件に関する設定です。
+
+1. **iOS 向け PWA 通知ガイド**:
+   - iOS の仕様上、プッシュ通知を有効にするには「ホーム画面に追加」されてスタンドアロンモードで起動されている必要があります。
+   - iOS 且つ非スタンドアロンモードで通知設定を行おうとした場合、自動的に「ホーム画面に追加」の手順を解説するガイダンスモーダルがポップアップ表示されます。
+2. **法的ページの設定と Google OAuth 審査**:
+   - Google OAuth の検証審査を通過するため、`/terms` (利用規約) および `/privacy` (プライバシーポリシー) の静的ページが自動生成され、アプリの全画面フッターにリンクが設置されています。
+   - [privacy/page.tsx](file:///c:/dev/otayori-calender/otayori-calendar/src/app/privacy/page.tsx) には、Google審査基準である **Google APIユーザーデータ限定使用に関する開示 (Limited Use Disclosure)** が明記されています。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
