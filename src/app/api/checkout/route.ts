@@ -90,41 +90,28 @@ export async function POST(req: Request) {
     const reqHeaders = new Headers(req.headers);
     const origin = reqHeaders.get('origin') || 'http://localhost:3000';
 
-    // 5. Price IDの厳格な取得とサニタイズ
+    // 5. Price IDの厳格な取得とサニタイズ（事前ルックアップやフォールバックを廃止し直接代入）
     const rawPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
     const priceId = sanitizeEnvVar(rawPriceId);
-    
-    console.log("[checkout API] Sanitized Price ID verification:", {
-      originalLength: rawPriceId ? rawPriceId.length : 0,
-      sanitizedLength: priceId.length,
-      startsWithPrice: priceId.startsWith('price_')
-    });
 
-    const isPriceIdValid = priceId && priceId.startsWith('price_');
-    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = isPriceIdValid
-      ? { price: priceId, quantity: 1 }
-      : {
-          price_data: {
-            currency: 'jpy',
-            product_data: {
-              name: 'おたよりカレンダー プレミアムプラン',
-              description: '月額スキャン無制限、パートナー同期共有、広告非表示',
-            },
-            unit_amount: 480,
-            recurring: {
-              interval: 'month',
-            },
-          },
-          quantity: 1,
-        };
+    if (!priceId) {
+      throw new Error("Missing NEXT_PUBLIC_STRIPE_PRICE_ID in environment variables.");
+    }
+
+    const appUrl = sanitizeEnvVar(process.env.NEXT_PUBLIC_APP_URL) || origin;
 
     // 6. Stripe Checkout セッション生成
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [lineItem],
+      line_items: [
+        {
+          price: priceId, // ルックアップキー検索を経由せず、直接本番ID(price_...)を叩き込む
+          quantity: 1,
+        }
+      ],
       mode: 'subscription',
-      success_url: `${origin}/?session_id={CHECKOUT_SESSION_ID}&checkout=success`,
-      cancel_url: `${origin}/`,
+      success_url: `${appUrl}/?session_id={CHECKOUT_SESSION_ID}&checkout=success`,
+      cancel_url: `${appUrl}/`,
       metadata: {
         userId: userId,
       },
