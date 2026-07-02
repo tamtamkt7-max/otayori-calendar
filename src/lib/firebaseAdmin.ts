@@ -33,7 +33,7 @@ function parseFirebaseServiceAccount(rawJson: string) {
 }
 
 try {
-  if (!admin.apps.length) {
+  if (!(admin as any).apps.length) {
     const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!serviceAccountStr) {
       throw new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
