@@ -25,6 +25,16 @@ import { trackEvent, GA_EVENTS } from '../lib/gtag';
 import Link from 'next/link';
 import { generateIcsString, downloadIcsFile } from '../lib/ics';
 
+// Safari対策：ハイフン区切りの日付文字列("YYYY-MM-DD")をスラッシュ区切り("YYYY/MM/DD")に置換して安全にローカル時間でパースするヘルパー
+const safeParseDate = (dateStr: string | null | undefined): Date => {
+  if (!dateStr) return new Date();
+  // すでに "2026/07/10" 形式、または ISO 形式の場合はそのまま、ハイフン区切りのみスラッシュに置換
+  const sanitized = dateStr.includes('-') && !dateStr.includes('T')
+    ? dateStr.replace(/-/g, '/')
+    : dateStr;
+  return new Date(sanitized);
+};
+
 export default function Home() {
   // --- 認証関連のState ---
   const [user, setUser] = useState<User | null>(null);
@@ -322,7 +332,7 @@ export default function Home() {
 
   // 週表示用の日付セルリスト生成
   const getWeekCells = () => {
-    const selected = new Date(selectedDateStr);
+    const selected = safeParseDate(selectedDateStr);
     const dayOfWeek = selected.getDay(); // 0:日 ~ 6:土
     const startOfWeek = new Date(selected);
     startOfWeek.setDate(selected.getDate() - dayOfWeek);
@@ -686,7 +696,7 @@ export default function Home() {
                     if (viewMode === 'month') {
                       prevMonth();
                     } else {
-                      const d = new Date(selectedDateStr);
+                      const d = safeParseDate(selectedDateStr);
                       d.setDate(d.getDate() - 7);
                       setSelectedDateStr(d.toISOString().split('T')[0]);
                       setCurrentDate(d);
@@ -706,7 +716,7 @@ export default function Home() {
                     if (viewMode === 'month') {
                       nextMonth();
                     } else {
-                      const d = new Date(selectedDateStr);
+                      const d = safeParseDate(selectedDateStr);
                       d.setDate(d.getDate() + 7);
                       setSelectedDateStr(d.toISOString().split('T')[0]);
                       setCurrentDate(d);
