@@ -23,8 +23,9 @@ export async function POST(req: Request) {
 
     const admin = getFirebaseAdmin();
     const firestore = admin?.db;
-    if (!firestore) {
-      return NextResponse.json({ error: 'データベースに接続できませんでした（設定エラー）' }, { status: 500 });
+    if (admin.error || !firestore) {
+      console.error("[scan API] Firebase Admin is unavailable:", admin.error);
+      return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
     // セキュリティ対策: レートリミット（1分間に最大5回、1日に最大30回）

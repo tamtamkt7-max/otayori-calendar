@@ -18,8 +18,9 @@ export async function GET(req: Request) {
 
     const admin = getFirebaseAdmin();
     const db = admin?.db;
-    if (!db) {
-      return NextResponse.json({ error: 'Database connection config error' }, { status: 500 });
+    if (admin.error || !db) {
+      console.error("[send-reminders API] Firebase Admin is unavailable:", admin.error);
+      return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
     const messaging = getMessaging();

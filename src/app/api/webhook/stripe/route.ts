@@ -14,8 +14,8 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 async function updateUserPlan(userId: string, plan: 'premium' | 'free') {
   const admin = getFirebaseAdmin();
   const db = admin?.db;
-  if (!db) {
-    throw new Error("Database connection failed during plan update");
+  if (admin.error || !db) {
+    throw new Error(`Database connection failed during plan update: ${admin.error?.message || 'Unknown Firebase Admin error'}`);
   }
   const userRef = db.collection('users').doc(userId);
   await userRef.set({

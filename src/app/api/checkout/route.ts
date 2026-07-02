@@ -17,8 +17,9 @@ export async function POST(req: Request) {
     });
 
     const admin = getFirebaseAdmin();
-    if (!admin) {
-      return NextResponse.json({ error: 'サーバー内部エラーが発生しました。' }, { status: 500 });
+    if (admin.error || !admin.db) {
+      console.error("[checkout API] Firebase Admin is unavailable:", admin.error);
+      return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
     // 1. Firebase ID Token の検証
