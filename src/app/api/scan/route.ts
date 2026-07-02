@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     // 2. トランザクション処理による利用制限数のインクリメント
     let finalRemaining = 10;
     
-    await firestore.runTransaction(async (transaction) => {
+    await firestore.runTransaction(async (transaction: any) => {
       const freshDoc = await transaction.get(userRef);
       let fScanCount = 0;
       let fLastScanMonth = '';
