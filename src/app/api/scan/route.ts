@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { checkRateLimit } from '../../../lib/rateLimit';
 import crypto from 'crypto';
 import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
+import { getStorage } from 'firebase-admin/storage';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
