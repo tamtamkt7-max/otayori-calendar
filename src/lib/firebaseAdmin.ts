@@ -6,11 +6,10 @@ import { sanitizeEnvVar } from './envSanitizer';
 // グローバルスコープでのキャッシュ退避定義 (二重初期化の完全防止)
 declare global {
   var firebaseAdminApp: App | undefined;
+  var firebaseAdminDb: Firestore | undefined;
+  var firebaseAdminAuth: Auth | undefined;
+  var firebaseAdminError: any | undefined;
 }
-
-let db: Firestore = null as any;
-let auth: Auth = null as any;
-let initError: any = null;
 
 function getDecodedServiceAccountString(rawStr: string): string {
   const cleaned = rawStr.trim();
@@ -40,47 +39,71 @@ function parseFirebaseServiceAccount(rawJson: string) {
   }
 }
 
-try {
-  let app: App;
-  
-  if (global.firebaseAdminApp) {
-    app = global.firebaseAdminApp;
-    console.log("[Firebase Admin Helper] Reusing global Firebase Admin instance.");
-  } else if (getApps().length > 0) {
-    app = getApps()[0];
-    global.firebaseAdminApp = app;
-    console.log("[Firebase Admin Helper] Reusing existing SDK Firebase Admin instance.");
-  } else {
-    const serviceAccountStr = sanitizeEnvVar(process.env.FIREBASE_SERVICE_ACCOUNT);
-    if (!serviceAccountStr) {
-      console.warn("[Firebase Admin Helper] FIREBASE_SERVICE_ACCOUNT is not set in env variables. Skipping initialization during build/start.");
-      initError = new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
+// 実行時に初めて呼ばれる、安全な初期化ゲッター（トップレベルでの初期化を廃止し、ロード時クラッシュを根絶）
+export function getFirebaseAdmin() {
+  try {
+    // 1. キャッシュが存在すれば即座に再利用
+    if (global.firebaseAdminApp && global.firebaseAdminDb && global.firebaseAdminAuth) {
+      return {
+        db: global.firebaseAdminDb,
+        auth: global.firebaseAdminAuth,
+        error: global.firebaseAdminError || null
+      };
+    }
+
+    let app: App;
+
+    // 2. SDK 側の二重初期化チェック
+    if (getApps().length > 0) {
+      app = getApps()[0];
+      global.firebaseAdminApp = app;
+      console.log("[Firebase Admin Helper] Reusing existing SDK Firebase Admin instance.");
     } else {
+      // 3. 環境変数の取得とサニタイズ
+      const serviceAccountStr = sanitizeEnvVar(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (!serviceAccountStr) {
+        console.warn("[Firebase Admin Helper] FIREBASE_SERVICE_ACCOUNT is not set in env variables. Skipping initialization during build/start.");
+        global.firebaseAdminError = new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
+        return {
+          db: null as any,
+          auth: null as any,
+          error: global.firebaseAdminError
+        };
+      }
+
+      // 4. パースとデコード
       const decodedStr = getDecodedServiceAccountString(serviceAccountStr);
       const serviceAccount = parseFirebaseServiceAccount(decodedStr);
       if (serviceAccount && typeof serviceAccount.private_key === 'string') {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
       }
-      
+
+      // 5. Firebase 初期化
       app = initializeApp({
         credential: cert(serviceAccount)
       });
       global.firebaseAdminApp = app;
-      console.log("[Firebase Admin Helper] Firebase Admin initialized and cached globally.");
-      
-      db = getFirestore();
-      auth = getAuth();
+      console.log("[Firebase Admin Helper] Firebase Admin initialized and cached globally (lazy loaded).");
     }
-  }
-} catch (err: any) {
-  console.error("[Firebase Admin Helper] Initialization failed:", err);
-  initError = err;
-}
 
-export function getFirebaseAdmin() {
-  return {
-    db: db as any,
-    auth: auth as any,
-    error: initError
-  };
+    // 6. DB と Auth のインスタンス取得・キャッシュ
+    global.firebaseAdminDb = getFirestore();
+    global.firebaseAdminAuth = getAuth();
+    global.firebaseAdminError = null;
+
+    return {
+      db: global.firebaseAdminDb,
+      auth: global.firebaseAdminAuth,
+      error: null
+    };
+
+  } catch (err: any) {
+    console.error("[Firebase Admin Helper] Critical Lazy Initialization Failure:", err);
+    global.firebaseAdminError = err;
+    return {
+      db: null as any,
+      auth: null as any,
+      error: err
+    };
+  }
 }
