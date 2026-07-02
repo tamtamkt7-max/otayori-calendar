@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getToken } from 'firebase/messaging';
 import { doc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db, getFcmMessaging } from '../lib/firebase';
+import { trackEvent, GA_EVENTS } from '../lib/gtag';
 
 export const useFcm = (uid: string | undefined) => {
   const [fcmToken, setFcmToken] = useState<string | null>(null);
@@ -68,6 +69,10 @@ export const useFcm = (uid: string | undefined) => {
               fcmTokens: arrayUnion(token),
               updatedAt: new Date().toISOString()
             }, { merge: true });
+
+            // GA4イベントトラッキング
+            trackEvent(GA_EVENTS.NOTIFICATION_SUBSCRIBE, 'notification', 'subscribe_fcm_success');
+
             return token;
           } else {
             throw new Error('FCMトークンの取得に失敗しました。');

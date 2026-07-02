@@ -21,6 +21,7 @@ import {
 import { auth, googleProvider, db } from '../lib/firebase';
 import { useFcm } from '../hooks/useFcm';
 import AdBanner from '../components/ads/AdBanner';
+import { trackEvent, GA_EVENTS } from '../lib/gtag';
 
 export default function Home() {
   // --- 認証関連のState ---
@@ -259,6 +260,7 @@ export default function Home() {
 
   // --- Stripe決済画面への遷移処理 ---
   const handleUpgrade = async () => {
+    trackEvent(GA_EVENTS.UPGRADE_CLICK, 'payment', 'upgrade_premium_click');
     try {
       setLoading(true);
       const token = await user?.getIdToken();
@@ -290,6 +292,7 @@ export default function Home() {
   // --- Googleカレンダー連携処理 ---
   const handleGoogleCalendarLink = async () => {
     if (!user) return;
+    trackEvent(GA_EVENTS.GOOGLE_CALENDAR_LINK, 'integration', 'link_google_calendar');
     try {
       setLoading(true);
       const response = await fetch(`/api/auth/google-calendar?userId=${user.uid}`);
@@ -310,6 +313,7 @@ export default function Home() {
   // Google連携解除処理
   const handleDisconnectGoogle = async () => {
     if (!confirm("Googleカレンダーとの連携を解除しますか？")) return;
+    trackEvent(GA_EVENTS.GOOGLE_CALENDAR_DISCONNECT, 'integration', 'disconnect_google_calendar');
     try {
       setLoading(true);
       const { doc, setDoc } = await import('firebase/firestore');
@@ -345,6 +349,7 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    trackEvent(GA_EVENTS.SCAN_START, 'ai_scan', file.name);
     setLoading(true);
     setScanResult(null);
     setErrorMessage(null);
@@ -371,6 +376,8 @@ export default function Home() {
             imageUrl: data.imageUrl || null
           }));
 
+          trackEvent(GA_EVENTS.SCAN_SUCCESS, 'ai_scan', `events_found_${newEvents.length}`, newEvents.length);
+
           // API経由でFirestoreに解析結果とリマインド設定を保存
           if (user) {
             try {
@@ -393,12 +400,15 @@ export default function Home() {
           setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
         } else {
           if (response.status === 403) {
+            trackEvent(GA_EVENTS.SCAN_FAILURE, 'ai_scan', 'scan_limit_reached');
             setIsLimitModalOpen(true);
           } else {
+            trackEvent(GA_EVENTS.SCAN_FAILURE, 'ai_scan', data.error || 'scan_api_error');
             setErrorMessage(data.error || "おたよりの読み込みに失敗しました😢");
           }
         }
       } catch (err: any) {
+        trackEvent(GA_EVENTS.SCAN_FAILURE, 'ai_scan', 'network_error');
         setErrorMessage("通信に失敗しました。電波の良いところで再度お試しください💦");
       } finally {
         setLoading(false);
