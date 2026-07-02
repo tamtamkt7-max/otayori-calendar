@@ -23,6 +23,7 @@ import { useFcm } from '../hooks/useFcm';
 import AdBanner from '../components/ads/AdBanner';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
 import Link from 'next/link';
+import { generateIcsString, downloadIcsFile } from '../lib/ics';
 
 export default function Home() {
   // --- 認証関連のState ---
@@ -278,6 +279,46 @@ export default function Home() {
   };
 
 
+
+  // --- .ics カレンダーエクスポート処理 ---
+  // 個別予定の書き出し
+  const handleExportSingleIcs = (event: any) => {
+    if (!event) return;
+    try {
+      trackEvent('calendar_export_ics', 'ics', 'export_single');
+      const icsString = generateIcsString({
+        id: event.id,
+        title: event.title || '無題の予定',
+        date: event.date,
+        details: event.details || ''
+      });
+      const filename = `${event.date}_${event.title || 'event'}.ics`;
+      downloadIcsFile(filename, icsString);
+    } catch (err) {
+      console.error("Failed to export single .ics:", err);
+      alert("カレンダーファイルの生成に失敗しました😢");
+    }
+  };
+
+  // 複数予定（スキャン結果など）の一括書き出し
+  const handleExportMultipleIcs = (eventsList: any[]) => {
+    if (!eventsList || eventsList.length === 0) return;
+    try {
+      trackEvent('calendar_export_ics', 'ics', 'export_multiple');
+      const formattedEvents = eventsList.map(ev => ({
+        id: ev.id,
+        title: ev.title || '無題の予定',
+        date: ev.date,
+        details: ev.details || ''
+      }));
+      const icsString = generateIcsString(formattedEvents);
+      const filename = `otayori_events_${new Date().toISOString().slice(0,10)}.ics`;
+      downloadIcsFile(filename, icsString);
+    } catch (err) {
+      console.error("Failed to export multiple .ics:", err);
+      alert("カレンダーファイルの一括生成に失敗しました😢");
+    }
+  };
 
   // 週表示用の日付セルリスト生成
   const getWeekCells = () => {
@@ -756,9 +797,22 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <div className="pt-2">
+              <div className="pt-2 space-y-3">
                 <AdBanner slot="scan-result-bottom" isPremium={userStatus.isPremium} />
-                <button onClick={() => setScanResult(null)} className="w-full py-3.5 bg-teal-400 hover:bg-teal-500 text-white font-bold rounded-full transition active:scale-95 text-sm shadow-sm">確認完了（閉じる）</button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={() => handleExportMultipleIcs(scanResult)} 
+                    className="flex-1 py-3.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold rounded-xl transition active:scale-95 text-xs shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    📅 カレンダー一括登録 (.ics)
+                  </button>
+                  <button 
+                    onClick={() => setScanResult(null)} 
+                    className="flex-1 py-3.5 bg-teal-400 hover:bg-teal-500 text-white font-extrabold rounded-xl transition active:scale-95 text-xs shadow-sm"
+                  >
+                    確認完了（閉じる）
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1027,23 +1081,35 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button 
-                type="submit"
-                className="flex-1 bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
-              >
-                保存する
-              </button>
-              <button 
-                type="button"
-                onClick={() => {
-                  setIsEventModalOpen(false);
-                  setEditingEvent(null);
-                }}
-                className="flex-1 bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3.5 rounded-xl text-xs transition active:scale-95"
-              >
-                キャンセル
-              </button>
+            <div className="flex flex-col gap-2 pt-2">
+              <div className="flex gap-2 w-full">
+                <button 
+                  type="submit"
+                  className="flex-1 bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
+                >
+                  保存する
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsEventModalOpen(false);
+                    setEditingEvent(null);
+                  }}
+                  className="flex-1 bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3.5 rounded-xl text-xs transition active:scale-95"
+                >
+                  キャンセル
+                </button>
+              </div>
+              
+              {editingEvent.id && (
+                <button 
+                  type="button"
+                  onClick={() => handleExportSingleIcs(editingEvent)}
+                  className="w-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  📅 カレンダーに追加 (.ics)
+                </button>
+              )}
             </div>
           </form>
         </div>
