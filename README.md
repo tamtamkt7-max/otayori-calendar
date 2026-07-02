@@ -243,6 +243,15 @@ Edge Runtime の誤干渉による Firebase / Stripe 関連 API の実行時強�
    - `api/checkout/route.ts` において、`stripe.prices.list` を使った動的価格取得や、`price_data` を用いたアドホックな商品・価格生成ロジックをすべて廃止しました。
    - Vercel の環境変数 `NEXT_PUBLIC_STRIPE_PRICE_ID` に指定された本番の価格ID（`price_1ToZa...`）を直接 `price` パラメータとして `stripe.checkout.sessions.create` に渡すことで、外部通信の手順を最小限に抑え、処理時間を短縮しつつ決済セッションを作成します。
 
+### 18. APIレスポンスのエラーシリアライズ安全化と 200 正常返却による Vercel 即死防止
+例外発生時に Vercel / Next.js のインフラ層で発生する二次的な JSON シリアライズ例外によるプロセス強制終了（FUNCTION_INVOCATION_FAILED）を防ぐ超防衛策です。
+
+1. **例外の安全な文字列化 (シリアライズクラッシュ根絶)**:
+   - `api/checkout` において、`error.stack` や `error.message` などの非シリアライズ可能な Error オブジェクトの生データをそのまま JSON 返却するのをやめ、すべて明示的に `String(error.message)` や `String(error.stack)` のようにプリミティブな文字列型にキャストして返却するようにしました。これにより、循環参照などによる `TypeError: Converting circular structure to JSON` クラッシュを防ぎます。
+2. **`status: 200` 正常系にエラー情報を内包して返却するガード**:
+   - Vercel や Next.js のゲートウェイ監視による 500 インフラエラー判定による遮断を防ぐため、初期化失敗や決済セッション作成失敗などのアプリ内例外発生時であっても `status: 200` でエラー情報 `{ success: false, error: '...' }` を応答する仕様に統一しました。
+   - これに伴い、フロントエンド側（`page.tsx`）でも `response.ok` だけでなく、返却された JSON の `success === false` を適切に検知してエラーアラートを出すようにハンドリングを堅牢化しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
