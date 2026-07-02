@@ -35,12 +35,11 @@ export default function Home() {
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // --- カレンダー関連のState ---
+  // --- カレンダー関連 of State ---
   const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1));
   const [selectedDateStr, setSelectedDateStr] = useState<string>("2026-07-10");
   const [events, setEvents] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
-  const [isGoogleLinked, setIsGoogleLinked] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<any[] | null>(null);
@@ -78,13 +77,12 @@ export default function Home() {
           });
           setEvents(fetchedEvents);
 
-          // 2. ユーザーステータス（プラン・スキャン回数・Googleカレンダー連携）の同期
+          // 2. ユーザーステータス（プラン・スキャン回数）の同期
           const { getDoc } = await import('firebase/firestore');
           const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
             const isPremium = userData.plan === 'premium';
-            setIsGoogleLinked(!!userData.googleCalendarConnected);
             
             // 日本時間の現在年月を取得してリセット判定
             const now = new Date();
@@ -112,7 +110,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // URLクエリパラメータの処理 (Googleカレンダー連携の成否判定など) と Googleリダイレクトログイン結果のキャッチ
+  // Googleリダイレクトログイン結果のキャッチ
   useEffect(() => {
     getRedirectResult(auth)
       .then((result) => {
@@ -124,19 +122,6 @@ export default function Home() {
         console.error("[Auth] Google Redirect login error:", error);
         setAuthError(`Googleログインに失敗しました: ${error.message || 'ブラウザのCookie制限等のエラー'}`);
       });
-
-    const params = new URLSearchParams(window.location.search);
-    const syncStatus = params.get('google-sync');
-    const reason = params.get('reason');
-
-    if (syncStatus === 'success') {
-      alert("Googleカレンダーとの連携に成功しました！🎉\n今後追加・更新された予定は自動的にGoogleカレンダーにも同期されます。");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      setIsGoogleLinked(true);
-    } else if (syncStatus === 'error') {
-      alert(`Googleカレンダーとの連携に失敗しました😢\n理由: ${reason || '不明なエラー'}`);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
   }, []);
 
   // Googleログイン処理
@@ -292,44 +277,7 @@ export default function Home() {
     }
   };
 
-  // --- Googleカレンダー連携処理 ---
-  const handleGoogleCalendarLink = async () => {
-    if (!user) return;
-    trackEvent(GA_EVENTS.GOOGLE_CALENDAR_LINK, 'integration', 'link_google_calendar');
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/auth/google-calendar?userId=${user.uid}`);
-      const data = await response.json();
-      if (response.ok && data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error(data.error || '連携URLの取得に失敗しました。');
-      }
-    } catch (err: any) {
-      console.error("Google Calendar Link Error:", err);
-      alert(err.message || "Googleカレンダー連携画面の生成中にエラーが発生しました💦");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // Google連携解除処理
-  const handleDisconnectGoogle = async () => {
-    if (!confirm("Googleカレンダーとの連携を解除しますか？")) return;
-    trackEvent(GA_EVENTS.GOOGLE_CALENDAR_DISCONNECT, 'integration', 'disconnect_google_calendar');
-    try {
-      setLoading(true);
-      const { doc, setDoc } = await import('firebase/firestore');
-      await setDoc(doc(db, 'users', user!.uid), { googleCalendarConnected: false }, { merge: true });
-      setIsGoogleLinked(false);
-      alert("Googleカレンダーとの連携を解除しました。");
-    } catch (err) {
-      console.error("Disconnect Google Error:", err);
-      alert("解除に失敗しました💦");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // 週表示用の日付セルリスト生成
   const getWeekCells = () => {
@@ -590,24 +538,6 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {isGoogleLinked ? (
-              <button 
-                onClick={handleDisconnectGoogle}
-                className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 px-3 py-1.5 rounded-full font-extrabold flex items-center gap-1 shadow-sm transition active:scale-95"
-                title="クリックでGoogle連携を解除"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Google同期中
-              </button>
-            ) : (
-              <button 
-                onClick={handleGoogleCalendarLink}
-                disabled={loading}
-                className="text-[10px] bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-full font-extrabold flex items-center gap-1 shadow-sm transition active:scale-95"
-              >
-                📅 Google連携
-              </button>
-            )}
             {!userStatus.isPremium ? (
               <button 
                 onClick={handleUpgrade}
