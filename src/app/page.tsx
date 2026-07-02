@@ -110,9 +110,18 @@ export default function Home() {
               maxScans: 10
             });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("データ同期エラー:", error);
-          setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
+          const errCode = error?.code || '';
+          const errMsg = error?.message || '';
+          
+          if (errCode === 'permission-denied' || errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
+            setErrorMessage("Firestoreのアクセス権限エラー（Permission Denied）が発生しました。Firebaseコンソールでセキュリティルールが適用（公開）されているかご確認ください。");
+          } else if (errCode === 'unavailable' || errMsg.includes('offline')) {
+            setErrorMessage("一時的にデータベースに接続できません。通信環境をご確認のうえ再読み込みしてください。");
+          } else {
+            setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
+          }
         }
       } else {
         setEvents([]);
