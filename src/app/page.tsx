@@ -465,6 +465,9 @@ export default function Home() {
       }
 
       const data = await response.json();
+      if (data.success === false || data.error) {
+        throw new Error(data.error || '決済の準備に失敗しました。');
+      }
       if (data.url) {
         if (!data.url.startsWith('https://')) {
           throw new Error('決済URLの形式が正しくありません。');
