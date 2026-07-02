@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@next/third-parties": "^16.2.10",
     "@sentry/nextjs": "^10.62.0",
     "firebase": "^12.15.0",
     "firebase-admin": "^14.1.0",
