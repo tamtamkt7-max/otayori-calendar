@@ -71,64 +71,89 @@ export default function Home() {
     setShowIosPwaGuide
   } = useFcm(user?.uid);
 
-  // ログイン状態の監視とデータ同期
+  // ログイン状態の監視
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
-      
-      if (currentUser) {
-        // Firestoreから予定とユーザーステータスを取得
-        try {
-          // 1. 予定のフェッチ
-          const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/events`));
-          const fetchedEvents: any[] = [];
-          querySnapshot.forEach((doc) => {
-            fetchedEvents.push({ id: doc.id, ...doc.data() });
-          });
-          setEvents(fetchedEvents);
-
-          // 2. ユーザーステータス（プラン・スキャン回数）の同期
-          const { getDoc } = await import('firebase/firestore');
-          const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            const isPremium = userData.plan === 'premium';
-            
-            // 日本時間の現在年月を取得してリセット判定
-            const now = new Date();
-            const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-            const currentMonthStr = `${jstDate.getFullYear()}-${String(jstDate.getMonth() + 1).padStart(2, '0')}`;
-            
-            const lastScanMonth = userData.lastScanMonth || '';
-            const scanCount = lastScanMonth === currentMonthStr ? (userData.scanCount || 0) : 0;
-            const remainingScans = isPremium ? 9999 : Math.max(0, 10 - scanCount);
-            
-            setUserStatus({
-              isPremium,
-              remainingScans,
-              maxScans: 10
-            });
-          }
-        } catch (error: any) {
-          console.error("データ同期エラー:", error);
-          const errCode = error?.code || '';
-          const errMsg = error?.message || '';
-          
-          if (errCode === 'permission-denied' || errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
-            setErrorMessage("Firestoreのアクセス権限エラー（Permission Denied）が発生しました。Firebaseコンソールでセキュリティルールが適用（公開）されているかご確認ください。");
-          } else if (errCode === 'unavailable' || errMsg.includes('offline')) {
-            setErrorMessage("一時的にデータベースに接続できません。通信環境をご確認のうえ再読み込みしてください。");
-          } else {
-            setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
-          }
-        }
-      } else {
-        setEvents([]);
-      }
     });
     return () => unsubscribe();
   }, []);
+
+  // ログイン完了後のデータ同期 (Firestoreの認証確立を待つための別useEffect)
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    const syncData = async () => {
+      if (!user) {
+        setEvents([]);
+        return;
+      }
+
+      setErrorMessage(null);
+      // Firestoreから予定とユーザーステータスを取得
+      try {
+        // 1. 予定のフェッチ
+        const querySnapshot = await getDocs(collection(db, `users/${user.uid}/events`));
+        const fetchedEvents: any[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedEvents.push({ id: doc.id, ...doc.data() });
+        });
+        setEvents(fetchedEvents);
+
+        // 2. ユーザーステータス（プラン・スキャン回数）の同期
+        const { getDoc } = await import('firebase/firestore');
+        const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          const isPremium = userData.plan === 'premium';
+          
+          // 日本時間の現在年月を取得してリセット判定
+          const now = new Date();
+          const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+          const currentMonthStr = `${jstDate.getFullYear()}-${String(jstDate.getMonth() + 1).padStart(2, '0')}`;
+          
+          const lastScanMonth = userData.lastScanMonth || '';
+          const scanCount = lastScanMonth === currentMonthStr ? (userData.scanCount || 0) : 0;
+          const remainingScans = isPremium ? 9999 : Math.max(0, 10 - scanCount);
+          
+          setUserStatus({
+            isPremium,
+            remainingScans,
+            maxScans: 10
+          });
+        } else {
+          // 新規ユーザーなどでドキュメントが存在しない場合、ドキュメントを初期作成する
+          const { setDoc } = await import('firebase/firestore');
+          await setDoc(doc(db, 'users', user.uid), {
+            plan: 'free',
+            scanCount: 0,
+            googleCalendarConnected: false,
+            createdAt: new Date().toISOString()
+          });
+          setUserStatus({
+            isPremium: false,
+            remainingScans: 10,
+            maxScans: 10
+          });
+        }
+      } catch (error: any) {
+        console.error("データ同期エラー:", error);
+        const errCode = error?.code || '';
+        const errMsg = error?.message || '';
+        
+        if (errCode === 'permission-denied' || errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
+          setErrorMessage("Firestoreのアクセス権限エラー（Permission Denied）が発生しました。Firebaseコンソールでセキュリティルールが適用（公開）されているかご確認ください。");
+        } else if (errCode === 'unavailable' || errMsg.includes('offline')) {
+          setErrorMessage("一時的にデータベースに接続できません。通信環境をご確認のうえ再読み込みしてください。");
+        } else {
+          setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
+        }
+      }
+    };
+
+    syncData();
+  }, [user, isAuthLoading]);
 
   // Googleリダイレクトログイン結果のキャッチ
   useEffect(() => {

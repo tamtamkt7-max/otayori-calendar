@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getToken } from 'firebase/messaging';
 import { doc, setDoc, arrayUnion } from 'firebase/firestore';
-import { db, getFcmMessaging } from '../lib/firebase';
+import { auth, db, getFcmMessaging } from '../lib/firebase';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
 
 export const useFcm = (uid: string | undefined) => {
@@ -43,6 +43,15 @@ export const useFcm = (uid: string | undefined) => {
       
       if (token) {
         setFcmToken(token);
+        // Firestore への書き込み前に Auth 確立を待つ遅延を挟む (150ms)
+        await new Promise(resolve => setTimeout(resolve, 150));
+        // さらに auth.currentUser がセットアップされているかダブルチェック
+        const currentUser = auth.currentUser;
+        if (!currentUser || currentUser.uid !== userId) {
+          console.warn("[FCM] Delaying Firestore sync: Auth is not fully ready or mismatch.");
+          return;
+        }
+
         // Firestore の users/{uid} ドキュメントに配列として保存
         const userRef = doc(db, 'users', userId);
         await setDoc(userRef, { 
