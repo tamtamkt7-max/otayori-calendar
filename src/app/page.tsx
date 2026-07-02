@@ -55,7 +55,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<any[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [userStatus, setUserStatus] = useState({ isPremium: false, remainingScans: 10, maxScans: 10 });
+  const [userStatus, setUserStatus] = useState({ isPremium: false, remainingScans: 10, maxScans: 10, groupId: '', inviteCode: '' });
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
@@ -91,22 +91,23 @@ export default function Home() {
       }
 
       setErrorMessage(null);
-      // Firestoreから予定とユーザーステータスを取得
       try {
-        // 1. 予定のフェッチ
-        const querySnapshot = await getDocs(collection(db, `users/${user.uid}/events`));
-        const fetchedEvents: any[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedEvents.push({ id: doc.id, ...doc.data() });
-        });
-        setEvents(fetchedEvents);
-
-        // 2. ユーザーステータス（プラン・スキャン回数）の同期
-        const { getDoc } = await import('firebase/firestore');
+        const { getDoc, setDoc } = await import('firebase/firestore');
+        
+        // 1. ユーザーステータス（プラン・スキャン回数・シェアグループ）の同期
         const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+        
+        let currentGroupId = user.uid;
+        let currentInviteCode = '';
+        let isPremium = false;
+        let remainingScans = 10;
+        
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
-          const isPremium = userData.plan === 'premium';
+          isPremium = userData.plan === 'premium';
+          
+          currentGroupId = userData.groupId || user.uid;
+          currentInviteCode = userData.inviteCode || '';
           
           // 日本時間の現在年月を取得してリセット判定
           const now = new Date();
@@ -115,28 +116,52 @@ export default function Home() {
           
           const lastScanMonth = userData.lastScanMonth || '';
           const scanCount = lastScanMonth === currentMonthStr ? (userData.scanCount || 0) : 0;
-          const remainingScans = isPremium ? 9999 : Math.max(0, 10 - scanCount);
+          remainingScans = isPremium ? 9999 : Math.max(0, 10 - scanCount);
           
-          setUserStatus({
-            isPremium,
-            remainingScans,
-            maxScans: 10
-          });
+          // もし groupId や inviteCode が未定義の場合は初期化して保存
+          if (!userData.groupId || !userData.inviteCode) {
+            const updates: any = {};
+            if (!userData.groupId) {
+              updates.groupId = user.uid;
+              currentGroupId = user.uid;
+            }
+            if (!userData.inviteCode) {
+              const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+              updates.inviteCode = code;
+              currentInviteCode = code;
+            }
+            await setDoc(doc(db, 'users', user.uid), updates, { merge: true });
+          }
         } else {
           // 新規ユーザーなどでドキュメントが存在しない場合、ドキュメントを初期作成する
-          const { setDoc } = await import('firebase/firestore');
+          const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+          currentInviteCode = code;
+          
           await setDoc(doc(db, 'users', user.uid), {
             plan: 'free',
             scanCount: 0,
-            googleCalendarConnected: false,
+            groupId: user.uid,
+            inviteCode: code,
             createdAt: new Date().toISOString()
           });
-          setUserStatus({
-            isPremium: false,
-            remainingScans: 10,
-            maxScans: 10
-          });
         }
+        
+        // 2. 予定のフェッチ (groupIdの統一データストア)
+        const querySnapshot = await getDocs(collection(db, `groups/${currentGroupId}/events`));
+        const fetchedEvents: any[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedEvents.push({ id: doc.id, ...doc.data() });
+        });
+        setEvents(fetchedEvents);
+
+        // Stateを同期
+        setUserStatus({
+          isPremium,
+          remainingScans,
+          maxScans: 10,
+          groupId: currentGroupId,
+          inviteCode: currentInviteCode
+        });
       } catch (error: any) {
         console.error("データ同期エラー:", error);
         const errCode = error?.code || '';
@@ -253,6 +278,7 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: user.uid,
+        groupId: userStatus.groupId || user.uid,
         action: 'save',
         event: evt
       })
@@ -286,6 +312,85 @@ export default function Home() {
     } catch (err) {
       console.error("予定の保存に失敗しました:", err);
       alert("予定の保存に失敗しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- 家族共有連携処理 ---
+  // 招待コードの入力による家族共有連携
+  const handleLinkGroup = async (targetInviteCode: string) => {
+    if (!user || !targetInviteCode) return;
+    setLoading(true);
+    try {
+      const { collection, query, where, getDocs, doc, setDoc } = await import('firebase/firestore');
+      const q = query(collection(db, 'users'), where('inviteCode', '==', targetInviteCode.trim().toUpperCase()));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        alert("無効な招待コードです。コードを確認してください。");
+        return;
+      }
+      
+      const partnerDoc = querySnapshot.docs[0];
+      const partnerData = partnerDoc.data();
+      const partnerGroupId = partnerData.groupId || partnerDoc.id;
+      
+      if (partnerDoc.id === user.uid) {
+        alert("自分自身の招待コードを入力することはできません。");
+        return;
+      }
+      
+      if (!confirm("指定されたユーザーのカレンダーと共有・同期しますか？\n（現在登録されている予定がマージされます）")) return;
+
+      const myGroupId = userStatus.groupId || user.uid;
+      
+      if (myGroupId !== partnerGroupId) {
+        const myEventsSnap = await getDocs(collection(db, `groups/${myGroupId}/events`));
+        const { writeBatch } = await import('firebase/firestore');
+        const batch = writeBatch(db);
+        
+        myEventsSnap.forEach((eventDoc) => {
+          const targetRef = doc(db, `groups/${partnerGroupId}/events`, eventDoc.id);
+          batch.set(targetRef, eventDoc.data(), { merge: true });
+        });
+        await batch.commit();
+      }
+
+      await setDoc(doc(db, 'users', user.uid), { groupId: partnerGroupId }, { merge: true });
+      
+      setUserStatus(prev => ({
+        ...prev,
+        groupId: partnerGroupId
+      }));
+      
+      alert("家族カレンダーの共有連携に成功しました！🎉");
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to link group:", err);
+      alert("カレンダーの連携に失敗しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 共有の解除
+  const handleUnlinkGroup = async () => {
+    if (!user) return;
+    if (!confirm("家族カレンダーとの連携を解除して、個人のカレンダーに戻しますか？\n（今後は自分だけの予定が表示されるようになります）")) return;
+    setLoading(true);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'users', user.uid), { groupId: user.uid }, { merge: true });
+      setUserStatus(prev => ({
+        ...prev,
+        groupId: user.uid
+      }));
+      alert("家族カレンダーとの連携を解除しました。");
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to unlink group:", err);
+      alert("連携解除に失敗しました💦");
     } finally {
       setLoading(false);
     }
@@ -503,6 +608,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: user.uid,
+            groupId: userStatus.groupId || user.uid,
             action: 'delete',
             event: { id }
           })
@@ -911,6 +1017,71 @@ export default function Home() {
             >
               ✍️ 手動で予定を追加する
             </button>
+          </div>
+
+          {/* 👪 家族シェア（アカウント連携）セクション */}
+          <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5">
+            <h3 className="font-bold text-stone-500 text-xs mb-3 text-left">👪 カレンダー共有（家族シェア）</h3>
+            
+            {user && userStatus.groupId && userStatus.groupId !== user.uid ? (
+              <div className="space-y-3 text-left">
+                <div className="bg-teal-50/70 border border-teal-100 text-teal-800 text-[11px] p-3.5 rounded-2xl font-bold flex items-center justify-between">
+                  <span>👪 家族共有モードで同期中</span>
+                  <button 
+                    onClick={handleUnlinkGroup}
+                    className="text-[10px] text-stone-500 hover:text-rose-500 bg-white border border-stone-200 px-2 py-1 rounded-lg font-bold transition shadow-sm"
+                  >
+                    解除
+                  </button>
+                </div>
+                <p className="text-[10px] text-stone-400 leading-relaxed">
+                  パートナーと同じカレンダーデータをリアルタイムで相互同期しています。追加・編集した予定は自動で共有されます。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3.5 text-left">
+                <div className="bg-stone-50 border border-stone-150 p-3.5 rounded-2xl">
+                  <p className="text-[10px] text-stone-400 font-bold">あなたの招待コード</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-sm font-black text-stone-700 tracking-wider select-all">{userStatus.inviteCode || '生成中...'}</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(userStatus.inviteCode);
+                        alert("招待コードをコピーしました！パートナーへ送信してください。");
+                      }}
+                      className="text-[10px] bg-white hover:bg-stone-100 border border-stone-200 text-stone-600 font-bold px-2.5 py-1 rounded-lg transition shadow-sm"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <p className="text-[10px] text-stone-400 font-bold">パートナーのコードを入力して連携</p>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget;
+                    const input = form.elements.namedItem('inviteCode') as HTMLInputElement;
+                    handleLinkGroup(input.value);
+                  }} className="flex gap-2">
+                    <input 
+                      name="inviteCode"
+                      type="text" 
+                      placeholder="例: AB12CD34" 
+                      required
+                      className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={loading}
+                      className="bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+                    >
+                      連携
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 flex-1 min-h-[300px] flex flex-col">

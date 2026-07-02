@@ -32,7 +32,7 @@ function getFirestoreInstance() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { userId, event, action } = body;
+    const { userId, groupId, event, action } = body;
 
     if (!userId) {
       return NextResponse.json({ error: 'ユーザーIDが必要です' }, { status: 400 });
@@ -76,7 +76,8 @@ export async function POST(req: Request) {
     }
 
     const eventId = event.id;
-    const userEventRef = db.collection('users').doc(userId).collection('events').doc(eventId);
+    const targetGroupId = groupId || userId;
+    const userEventRef = db.collection('groups').doc(targetGroupId).collection('events').doc(eventId);
     const remindersRef = db.collection('reminders');
 
     // 1. 既存の該当イベント用pendingリマインドの削除 (クリーンアップ)
