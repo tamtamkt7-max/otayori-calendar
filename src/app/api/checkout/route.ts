@@ -1,37 +1,12 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
 import { checkRateLimit } from '../../../lib/rateLimit';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
   // @ts-ignore
   apiVersion: '2023-10-16'
 });
-
-// firebase-admin 初期化ヘルパー
-function getFirebaseAdmin() {
-  if (!getApps().length) {
-    try {
-      const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
-      if (!serviceAccountStr) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT is not set.");
-      }
-      const serviceAccount = JSON.parse(serviceAccountStr);
-      initializeApp({
-        credential: cert(serviceAccount)
-      });
-    } catch (err) {
-      console.error("Firebase Admin initialization failed in checkout API:", err);
-      return null;
-    }
-  }
-  return {
-    auth: getAuth(),
-    db: getFirestore()
-  };
-}
 
 export async function POST(req: Request) {
   try {

@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import Stripe from 'stripe';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirebaseAdmin } from '../../../../lib/firebaseAdmin';
 import { sendWelcomeEmail, sendCancellationEmail } from '../../../../lib/resend';
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
   // @ts-ignore
   apiVersion: '2023-10-16'
@@ -12,34 +10,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// firebase-admin をリクエスト時に初期化するヘルパー
-function getFirestoreInstance() {
-  if (!getApps().length) {
-    try {
-      const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
-      if (!serviceAccountStr) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
-      }
-      const serviceAccount = JSON.parse(serviceAccountStr);
-      initializeApp({
-        credential: cert(serviceAccount)
-      });
-    } catch (initError) {
-      console.error("firebase-admin initialization failed in webhook:", initError);
-      return null;
-    }
-  }
-  try {
-    return getFirestore();
-  } catch (dbError) {
-    console.error("Failed to get Firestore instance in webhook:", dbError);
-    return null;
-  }
-}
-
 // ユーザーのプラン状態をFirestoreで更新するヘルパー
 async function updateUserPlan(userId: string, plan: 'premium' | 'free') {
-  const db = getFirestoreInstance();
+  const admin = getFirebaseAdmin();
+  const db = admin?.db;
   if (!db) {
     throw new Error("Database connection failed during plan update");
   }

@@ -8,8 +8,14 @@ service cloud.firestore {
     
     // groups/{groupId}/events 配下の予定データも、そのグループに所属するユーザーのみアクセス可能
     match /groups/{groupId}/events/{eventId} {
-      allow read, write: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId == groupId;
+      // 1. groupId が自分自身の uid と一致する場合は、プロファイルの存在に関わらず無条件で許可 (高速パススルー・初期 Permission Denied 回避)
+      // 2. groupId が異なる (家族シェア連携時) の場合は、プロファイル存在を確認したうえで groupId が一致するか確認 (exists() ガード)
+      allow read, write: if request.auth != null && (
+        request.auth.uid == groupId || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId == groupId
+        )
+      );
     }
     
     // reminders コレクション（ルート階層）に対する制限

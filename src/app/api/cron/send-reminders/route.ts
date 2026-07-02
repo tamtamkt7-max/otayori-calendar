@@ -1,27 +1,7 @@
 import { NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
+import { getFirebaseAdmin } from '../../../../lib/firebaseAdmin';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-
-// firebase-adminの初期化ヘルパー
-function initializeFirebaseAdmin() {
-  if (!getApps().length) {
-    try {
-      const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
-      if (!serviceAccountStr) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
-      }
-      const serviceAccount = JSON.parse(serviceAccountStr);
-      initializeApp({
-        credential: cert(serviceAccount)
-      });
-    } catch (initError) {
-      console.error("firebase-admin initialization failed:", initError);
-      return false;
-    }
-  }
-  return true;
-}
 
 export async function GET(req: Request) {
   try {
@@ -36,11 +16,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!initializeFirebaseAdmin()) {
+    const admin = getFirebaseAdmin();
+    const db = admin?.db;
+    if (!db) {
       return NextResponse.json({ error: 'Database connection config error' }, { status: 500 });
     }
 
-    const db = getFirestore();
     const messaging = getMessaging();
     const now = new Date();
 
