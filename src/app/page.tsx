@@ -55,7 +55,9 @@ export default function Home() {
     permissionStatus, 
     requestPermission, 
     loading: fcmLoading, 
-    error: fcmError 
+    error: fcmError,
+    showIosPwaGuide,
+    setShowIosPwaGuide
   } = useFcm(user?.uid);
 
   // ログイン状態の監視とデータ同期
@@ -1114,6 +1116,43 @@ export default function Home() {
             <button onClick={() => setActiveImageUrl(null)} className="absolute top-4 right-4 bg-stone-900/75 hover:bg-stone-900 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-95 shadow-md z-10">✕</button>
             <div className="max-h-[80vh] overflow-auto flex justify-center">
               <img src={activeImageUrl} alt="おたより画像" className="max-h-[80vh] w-auto object-contain rounded-2xl" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* iOS PWA ホーム追加ガイドモーダル */}
+      {showIosPwaGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md animate-fadeIn" onClick={() => setShowIosPwaGuide(false)}>
+          <div className="max-w-sm w-full bg-white rounded-3xl overflow-hidden shadow-2xl p-6 animate-scaleIn" onClick={e => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">📲</div>
+              <h3 className="text-lg font-black text-stone-800 mb-2">iOSで通知を受け取るには</h3>
+              <p className="text-xs text-stone-500 leading-relaxed mb-6">
+                iPhone / iPad などの iOS 端末でプッシュ通知を利用するには、アプリをホーム画面に追加する必要があります。
+              </p>
+              
+              <div className="space-y-4 text-left text-xs text-stone-600 mb-6 bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                <div className="flex gap-3 items-start">
+                  <span className="w-5 h-5 bg-orange-400 text-white rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+                  <span>Safariブラウザ下部（または上部）の<strong>「共有ボタン（正方形に上矢印のアイコン）」</strong>をクリックします。</span>
+                </div>
+                <div className="flex gap-3 items-start">
+                  <span className="w-5 h-5 bg-orange-400 text-white rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+                  <span>メニュー内の<strong>「ホーム画面に追加」</strong>をタップします。</span>
+                </div>
+                <div className="flex gap-3 items-start">
+                  <span className="w-5 h-5 bg-orange-400 text-white rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                  <span>ホーム画面に作成されたアプリアイコンから<strong>起動し直し</strong>、通知をオンに設定してください。</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowIosPwaGuide(false)}
+                className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition active:scale-95 shadow-sm text-sm"
+              >
+                了解しました
+              </button>
             </div>
           </div>
         </div>

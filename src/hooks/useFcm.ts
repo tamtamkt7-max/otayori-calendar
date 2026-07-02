@@ -9,6 +9,18 @@ export const useFcm = (uid: string | undefined) => {
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showIosPwaGuide, setShowIosPwaGuide] = useState(false);
+  const [isIosButNotStandalone, setIsIosButNotStandalone] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
+      if (isIOS && !isStandalone) {
+        setIsIosButNotStandalone(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -45,6 +57,11 @@ export const useFcm = (uid: string | undefined) => {
 
   const requestPermission = async () => {
     if (!uid) return null;
+    if (isIosButNotStandalone) {
+      setShowIosPwaGuide(true);
+      setError('iOS端末では「ホーム画面に追加」を行ってから通知をオンにしてください。');
+      return null;
+    }
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setError('このブラウザはプッシュ通知に対応していません。');
       return null;
@@ -92,5 +109,5 @@ export const useFcm = (uid: string | undefined) => {
     return null;
   };
 
-  return { fcmToken, permissionStatus, requestPermission, loading, error };
+  return { fcmToken, permissionStatus, requestPermission, loading, error, showIosPwaGuide, setShowIosPwaGuide };
 };
