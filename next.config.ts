@@ -9,6 +9,5 @@ export default withSentryConfig(nextConfig, {
   org: "otayori-calendar",
   project: "otayori-calendar",
   silent: true,
-  hideSourceMaps: true,
   disableLogger: true,
 });
