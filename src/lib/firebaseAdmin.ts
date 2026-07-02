@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 
-let db: admin.firestore.Firestore;
-let auth: admin.auth.Auth;
+let db: any;
+let auth: any;
 let initError: any = null;
 
 function getDecodedServiceAccountString(rawStr: string): string {
