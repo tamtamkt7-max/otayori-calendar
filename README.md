@@ -185,6 +185,14 @@ iOS (Safari) 環境で発生しやすいエラーや挙動不整合に対する�
 2. **決済APIルートでの環境変数監視と詳細追跡**:
    - `api/checkout/route.ts` 内に、StripeキーやFirebase管理認証情報（伏字処理済み）が正しくローディングされているかをチェックするデバッグログを組み込みました。また、Stripe SDK等から返ってくるエラー内容をサーバーログ（Vercel Log）およびクライアント側への JSON 応答内にすべて出力させ、原因の隠蔽を防ぎます。
 
+### 11. Firestore取得直列化ガードの導入とStripe入力バリデーション
+Firestoreでのレースコンディションによる Permission Denied、および決済時の不正な環境変数によるクラッシュの解消設計です。
+
+1. **カレンダー取得クエリの直列化ガード (`if (!currentGroupId) return`)**:
+   - `syncData` のデータ同期工程で、Firestoreから取得したプロファイルに `groupId` が完全に確定するまでは、イベントデータ取得（`getDocs`）に進まずに早期リターンする防衛ガードを組み込みました。これにより、プロファイルが未存在（または作成中）の状態でカレンダーの fetch が走り、セキュリティルール上の `get()` で Runtime Error となり Permission Denied になるのを100%防止します。
+2. **Stripe Price ID に対する厳格なバリデーション**:
+   - Vercel環境変数 `NEXT_PUBLIC_STRIPE_PRICE_ID` が登録されているものの値が空、または無効な指定である場合に Stripe SDK がクラッシュするのを防ぐため、IDが `price_` で始まる場合のみ Price ID として使い、それ以外は安全な `price_data` 生成方式へフォールバックするロジックに強化しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
