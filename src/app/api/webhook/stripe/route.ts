@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       const subscriptionId = (invoice as any).subscription as string | undefined;
       if (!userId && subscriptionId) {
         try {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const subscription = await getStripeClient().subscriptions.retrieve(subscriptionId);
           userId = subscription.metadata?.userId;
         } catch (err: any) {
           console.error(`[Webhook] Failed to retrieve subscription details:`, err.message);
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         await updateUserPlan(userId, 'free');
         if (subscription.customer) {
           try {
-            const customer = await stripe.customers.retrieve(subscription.customer as string);
+            const customer = await getStripeClient().customers.retrieve(subscription.customer as string);
             const email = (customer as any).email;
             if (email) {
               await sendCancellationEmail(email);
