@@ -93,12 +93,18 @@ export default function Home() {
       // Firestoreの認証状態が内部で確立されるのを確実に待つための遅延ガード (150ms)
       await new Promise(resolve => setTimeout(resolve, 150));
 
+      console.log("[syncData] Starting data sync. Auth states:", {
+        currentUser: auth.currentUser ? { uid: auth.currentUser.uid, email: auth.currentUser.email } : null,
+        userState: user ? { uid: user.uid, email: user.email } : null
+      });
+
       setErrorMessage(null);
       try {
         const { getDoc, setDoc } = await import('firebase/firestore');
         
-        // 1. ユーザーステータス（プラン・スキャン回数・シェアグループ）の同期
+        console.log("[syncData] Fetching users profile document. Path:", `users/${user.uid}`);
         const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+        console.log("[syncData] User profile document fetch complete. Exists:", userDocSnap.exists());
         
         let currentGroupId = user.uid;
         let currentInviteCode = '';
@@ -150,7 +156,9 @@ export default function Home() {
         }
         
         // 2. 予定のフェッチ (groupIdの統一データストア)
+        console.log("[syncData] Querying events collection. Path:", `groups/${currentGroupId}/events`);
         const querySnapshot = await getDocs(collection(db, `groups/${currentGroupId}/events`));
+        console.log("[syncData] Event query completed. Size:", querySnapshot.size);
         const fetchedEvents: any[] = [];
         querySnapshot.forEach((doc) => {
           fetchedEvents.push({ id: doc.id, ...doc.data() });
@@ -166,7 +174,12 @@ export default function Home() {
           inviteCode: currentInviteCode
         });
       } catch (error: any) {
-        console.error("データ同期エラー:", error);
+        console.error("[syncData] Critical data sync error details:", error, {
+          code: error?.code,
+          message: error?.message,
+          stack: error?.stack,
+          rawError: JSON.stringify(error)
+        });
         const errCode = error?.code || '';
         const errMsg = error?.message || '';
         
@@ -182,6 +195,11 @@ export default function Home() {
 
     syncData();
   }, [user, isAuthLoading]);
+
+  // userStatus変更のデバッグログ
+  useEffect(() => {
+    console.log("[Debug] userStatus changed state:", userStatus);
+  }, [userStatus]);
 
   // Googleリダイレクトログイン結果のキャッチ
   useEffect(() => {

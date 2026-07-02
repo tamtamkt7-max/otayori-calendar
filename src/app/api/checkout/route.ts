@@ -35,6 +35,12 @@ function getFirebaseAdmin() {
 
 export async function POST(req: Request) {
   try {
+    console.log("[checkout API] Received request. Checking environment variables:", {
+      STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ? `${process.env.STRIPE_SECRET_KEY.substring(0, 7)}...` : 'undefined',
+      NEXT_PUBLIC_STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || 'undefined',
+      FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT ? 'present' : 'undefined'
+    });
+
     const admin = getFirebaseAdmin();
     if (!admin) {
       return NextResponse.json({ error: 'サーバー内部エラーが発生しました。' }, { status: 500 });
@@ -113,8 +119,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (error: any) {
-    console.error("Stripe Session Creation Error:", error);
-    // 安全性向上のため、エラー詳細を外部に漏らさず抽象的なメッセージで統一
-    return NextResponse.json({ error: '決済セッションの生成に失敗しました。' }, { status: 500 });
+    console.error("[checkout API] Critical Stripe Session Creation Error Details:", error, {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      rawError: JSON.stringify(error)
+    });
+    return NextResponse.json({ error: `決済セッションの生成に失敗しました: ${error?.message || 'Unknown Stripe Error'}` }, { status: 500 });
   }
 }
