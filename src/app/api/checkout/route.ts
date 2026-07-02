@@ -2,7 +2,9 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import * as admin from 'firebase-admin';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 // プロセス例外トラップ
 if (typeof process !== 'undefined') {
@@ -46,8 +48,9 @@ export async function POST(req: Request) {
 
     if (firebaseSecret) {
       try {
-        if (admin.apps.length > 0) {
-          firebaseApp = admin.apps[0];
+        const apps = getApps();
+        if (apps.length > 0) {
+          firebaseApp = apps[0];
         } else {
           // Base64 デコード処理のインライン内包化
           let decodedSecret = firebaseSecret;
@@ -79,12 +82,12 @@ export async function POST(req: Request) {
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
           }
 
-          firebaseApp = admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
+          firebaseApp = initializeApp({
+            credential: cert(serviceAccount)
           });
         }
-        authObj = admin.auth();
-        dbObj = admin.firestore();
+        authObj = getAuth(firebaseApp);
+        dbObj = getFirestore(firebaseApp);
       } catch (fe: any) {
         console.error("[checkout API] Standalone Firebase Init failed:", fe);
         // Firebase初期化エラーがあっても、Stripeのために即死はさせない
