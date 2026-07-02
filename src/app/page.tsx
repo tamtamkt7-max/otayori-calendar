@@ -106,7 +106,7 @@ export default function Home() {
         const userDocSnap = await getDoc(doc(db, 'users', user.uid));
         console.log("[syncData] User profile document fetch complete. Exists:", userDocSnap.exists());
         
-        let currentGroupId = user.uid;
+        let currentGroupId = '';
         let currentInviteCode = '';
         let isPremium = false;
         let remainingScans = 10;
@@ -143,7 +143,9 @@ export default function Home() {
           }
         } else {
           // 新規ユーザーなどでドキュメントが存在しない場合、ドキュメントを初期作成する
+          console.log("[syncData] Creating initial user profile since it does not exist in DB.");
           const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+          currentGroupId = user.uid;
           currentInviteCode = code;
           
           await setDoc(doc(db, 'users', user.uid), {
@@ -153,6 +155,12 @@ export default function Home() {
             inviteCode: code,
             createdAt: new Date().toISOString()
           });
+        }
+
+        // 強力な直列化ガード: プロファイルのgroupIdがまだ確定していない場合はカレンダー読み込みに進まない
+        if (!currentGroupId) {
+          console.warn("[syncData] groupId is empty. Skipping events query to prevent Permission Denied.");
+          return;
         }
         
         // 2. 予定のフェッチ (groupIdの統一データストア)
