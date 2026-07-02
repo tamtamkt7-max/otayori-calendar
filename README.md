@@ -134,6 +134,16 @@ iOS (Safari) における通知の許可基準と、Google OAuth 審査を通過
    - Google OAuth の検証審査を通過するため、`/terms` (利用規約) および `/privacy` (プライバシーポリシー) の静的ページが自動生成され、アプリの全画面フッターにリンクが設置されています。
    - [privacy/page.tsx](file:///c:/dev/otayori-calender/otayori-calendar/src/app/privacy/page.tsx) には、Google審査基準である **Google APIユーザーデータ限定使用に関する開示 (Limited Use Disclosure)** が明記されています。
 
+### 6. iOS / Safari 向けの互換性およびデバッグ対策
+iOS (Safari) 環境で発生しやすいエラーや挙動不整合に対する対策です。
+
+1. **日付パースの堅牢化 (Safari対策)**:
+   - Safari の古い・厳格なパーサー仕様に対応するため、日付文字列（"YYYY-MM-DD"形式）のハイフンを自動でスラッシュ（"YYYY/MM/DD"形式）に置換してからパースする `safeParseDate` ヘルパーを適用しています。
+2. **Stripe決済画面リダイレクト時のセキュリティブロック回避**:
+   - 非同期処理後に `window.location.href` を書き換える際、Safariやアプリ内ブラウザ（WebView）がポップアップブロックやセキュリティ違反と誤検知してクラッシュするのを防ぐため、`try-catch` と `window.location.assign`、さらには `window.open` による多重フォールバック構造を実装しています。
+3. **データ読み込み失敗時のエラー解説強化**:
+   - Firebase Authentication のログイン後に Firestore からの読み込みで `permission-denied` (セキュリティルール拒否) が発生した際、単に「データの読み込みに失敗しました」と出すのではなく、Firebaseコンソール上でのルールの公開適用漏れを疑う具体的なアドバイスを表示し、トラブルシューティングを円滑にします。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
