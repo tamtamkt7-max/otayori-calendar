@@ -236,6 +236,13 @@ Edge Runtime の誤干渉による Firebase / Stripe 関連 API の実行時強�
 2. **キャッシュ判定の堅牢化**:
    - `global.firebaseAdminApp`、`global.firebaseAdminDb`、`global.firebaseAdminAuth` を併用してグローバル空間への完全なキャッシュ保管と検証を行い、実行フェーズにおける安全なシングルトン挙動を維持しています。
 
+### 17. Stripe Checkout セッション生成時の Price ID 直接指定への移行
+ルックアップキー検索や複雑なフォールバック判定に伴う API のオーバヘッドおよび無駄な API エラーを完全に防ぐ防衛策です。
+
+1. **直接代入方式への単純化**:
+   - `api/checkout/route.ts` において、`stripe.prices.list` を使った動的価格取得や、`price_data` を用いたアドホックな商品・価格生成ロジックをすべて廃止しました。
+   - Vercel の環境変数 `NEXT_PUBLIC_STRIPE_PRICE_ID` に指定された本番の価格ID（`price_1ToZa...`）を直接 `price` パラメータとして `stripe.checkout.sessions.create` に渡すことで、外部通信の手順を最小限に抑え、処理時間を短縮しつつ決済セッションを作成します。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
