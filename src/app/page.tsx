@@ -276,7 +276,24 @@ export default function Home() {
       });
       const data = await response.json();
       if (response.ok && data.url) {
-        window.location.href = data.url;
+        if (!data.url.startsWith('https://')) {
+          throw new Error('決済URLの形式が正しくありません。');
+        }
+
+        try {
+          window.location.href = data.url;
+        } catch (redirectErr: any) {
+          console.warn("[Upgrade] Safari location.href redirect blocked, retrying with location.assign...", redirectErr);
+          try {
+            window.location.assign(data.url);
+          } catch (assignErr) {
+            console.error("[Upgrade] Both redirection attempts failed:", assignErr);
+            const newWindow = window.open(data.url, '_blank');
+            if (!newWindow) {
+              throw new Error('ブラウザのセキュリティ設定により、決済画面への自動遷移がブロックされました。お手数ですが、通常のSafari/Chromeブラウザ（またはブラウザの標準タブ）から再度ログインして開き直してください。');
+            }
+          }
+        }
       } else {
         throw new Error(data.error || '決済の準備に失敗しました。');
       }
