@@ -227,6 +227,15 @@ Edge Runtime の誤干渉による Firebase / Stripe 関連 API の実行時強�
    - Webhook API（`api/webhook/stripe`）および決済 API（`api/checkout`）において、従来トップレベル（ロード時）で行われていた `new Stripe(...)` をリクエスト受信時の初回呼び出しタイミング（遅延）に移行しました。
    - これにより、環境変数の不備に起因する SDK の初期化エラーがモジュールロード時点で起きるのを防ぎ、かつ `POST` 内の最外殻 `try-catch` で確実に例外をキャッチして 500 エラーレスポンスとしてハンドリングできるよう堅牢化しました。
 
+### 16. Firebase Admin SDK の完全遅延初期化（レイジーロード）の適用
+モジュールロードフェーズ（インポート時）での未捕捉例外によるサーバープロセス即死クラッシュを完全に防ぐ防衛策です。
+
+1. **完全遅延初期化（レイジーロード）への移行**:
+   - `src/lib/firebaseAdmin.ts` 内での Firebase Admin SDK 初期化処理（`initializeApp`、および `getFirestore()` / `getAuth()` の実行）を、トップレベルから `getFirebaseAdmin()` 関数呼び出し時へと完全に遅延させました。
+   - これにより、インポート（モジュールロード）の瞬間に環境変数のパース崩れや初期化エラーで Vercel コンテナプロセスが 0.04 秒で即死する挙動を完璧に根絶しました。
+2. **キャッシュ判定の堅牢化**:
+   - `global.firebaseAdminApp`、`global.firebaseAdminDb`、`global.firebaseAdminAuth` を併用してグローバル空間への完全なキャッシュ保管と検証を行い、実行フェーズにおける安全なシングルトン挙動を維持しています。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
