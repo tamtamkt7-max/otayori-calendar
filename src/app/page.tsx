@@ -90,6 +90,9 @@ export default function Home() {
         return;
       }
 
+      // Firestoreの認証状態が内部で確立されるのを確実に待つための遅延ガード (150ms)
+      await new Promise(resolve => setTimeout(resolve, 150));
+
       setErrorMessage(null);
       try {
         const { getDoc, setDoc } = await import('firebase/firestore');
@@ -229,7 +232,17 @@ export default function Home() {
     setAuthError(null);
     try {
       if (isSignUpMode) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const newUser = userCredential.user;
+        const { setDoc } = await import('firebase/firestore');
+        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+        await setDoc(doc(db, 'users', newUser.uid), {
+          plan: 'free',
+          scanCount: 0,
+          groupId: newUser.uid,
+          inviteCode: code,
+          createdAt: new Date().toISOString()
+        });
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -413,8 +426,20 @@ export default function Home() {
           'Authorization': `Bearer ${token}`
         }
       });
+
+      if (!response.ok) {
+        let errMsg = '決済の準備に失敗しました。';
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch (_) {
+          // HTMLエラーページが返却された場合のフォールバック
+        }
+        throw new Error(errMsg);
+      }
+
       const data = await response.json();
-      if (response.ok && data.url) {
+      if (data.url) {
         if (!data.url.startsWith('https://')) {
           throw new Error('決済URLの形式が正しくありません。');
         }
