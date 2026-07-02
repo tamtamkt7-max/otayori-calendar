@@ -203,6 +203,13 @@ Firestoreでのレースコンディションによる Permission Denied、お�
    - グループ予定の読み書き権限ルールにおいて、`groupId` が自分の UID と一致する（個人利用時）場合は、DB参照なしで無条件でパススルーするルールに最適化しました。
    - シェア連携時（`groupId != userId`）にのみ別ドキュメントの参照を行います。その際にも、事前に `exists()` による存在ガードを評価させることで、DBへのロード遅延発生時にもルール評価で Runtime Error (Permission Denied) を起こさないように堅牢化しました。
 
+### 13. すべてのバックエンド API に対する Node.js ランタイムの明示的指定
+Edge Runtime の誤干渉による Firebase / Stripe 関連 API の実行時強制終了（クラッシュ）の回避策です。
+
+1. **`export const runtime = 'nodejs';` の強制適用**:
+   - `api/og` での Edge Runtime の使用に伴う Vercel のビルドエンジンの推論エラーや、配下 API への Edge 適用の干渉を防ぐため、バックエンド API（`checkout`, `events`, `scan`, `webhook/stripe`, `cron/send-reminders`）のすべてのルートファイルにおいて、明示的に Node.js ランタイムを指定しました。
+   - これにより、サーバーレス環境で Node.js ネイティブ依存を伴う初期化（Firebase Admin / Stripe インスタンス生成）が Vercel 側で不当に遮断（`FUNCTION_INVOCATION_FAILED`）される問題を完全に解消しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
