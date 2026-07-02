@@ -7,8 +7,8 @@ declare global {
   var firebaseAdminApp: App | undefined;
 }
 
-let db: Firestore;
-let auth: Auth;
+let db: Firestore = null as any;
+let auth: Auth = null as any;
 let initError: any = null;
 
 function getDecodedServiceAccountString(rawStr: string): string {
@@ -52,24 +52,25 @@ try {
   } else {
     const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!serviceAccountStr) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
+      console.warn("[Firebase Admin Helper] FIREBASE_SERVICE_ACCOUNT is not set in env variables. Skipping initialization during build/start.");
+      initError = new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
+    } else {
+      const decodedStr = getDecodedServiceAccountString(serviceAccountStr);
+      const serviceAccount = parseFirebaseServiceAccount(decodedStr);
+      if (serviceAccount && typeof serviceAccount.private_key === 'string') {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      
+      app = initializeApp({
+        credential: cert(serviceAccount)
+      });
+      global.firebaseAdminApp = app;
+      console.log("[Firebase Admin Helper] Firebase Admin initialized and cached globally.");
+      
+      db = getFirestore();
+      auth = getAuth();
     }
-    
-    const decodedStr = getDecodedServiceAccountString(serviceAccountStr);
-    const serviceAccount = parseFirebaseServiceAccount(decodedStr);
-    if (serviceAccount && typeof serviceAccount.private_key === 'string') {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
-    
-    app = initializeApp({
-      credential: cert(serviceAccount)
-    });
-    global.firebaseAdminApp = app;
-    console.log("[Firebase Admin Helper] Firebase Admin initialized and cached globally.");
   }
-  
-  db = getFirestore();
-  auth = getAuth();
 } catch (err: any) {
   console.error("[Firebase Admin Helper] Initialization failed:", err);
   initError = err;
