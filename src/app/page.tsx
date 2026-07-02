@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged, 
   User,
@@ -106,8 +108,19 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // URLクエリパラメータの処理 (Googleカレンダー連携の成否判定など)
+  // URLクエリパラメータの処理 (Googleカレンダー連携の成否判定など) と Googleリダイレクトログイン結果のキャッチ
   useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log("[Auth] Google Redirect login success:", result.user);
+        }
+      })
+      .catch((error) => {
+        console.error("[Auth] Google Redirect login error:", error);
+        setAuthError(`Googleログインに失敗しました: ${error.message || 'ブラウザのCookie制限等のエラー'}`);
+      });
+
     const params = new URLSearchParams(window.location.search);
     const syncStatus = params.get('google-sync');
     const reason = params.get('reason');
@@ -127,9 +140,27 @@ export default function Home() {
     setAuthError(null);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Googleログインエラー:", error);
-      setAuthError("Googleでのログインに失敗しました。");
+    } catch (error: any) {
+      console.error("Googleログイン ポップアップ失敗:", error);
+      
+      // ポップアップがブロックされた、またはアプリ内ブラウザ等でポップアップがサポートされていない場合
+      if (
+        error.code === 'auth/popup-blocked' ||
+        error.code === 'auth/cancelled-popup-request' ||
+        error.message?.includes('popup')
+      ) {
+        try {
+          console.log("ポップアップがブロックされたため、リダイレクト方式で再試行します...");
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr: any) {
+          console.error("Googleログイン リダイレクト失敗:", redirectErr);
+          setAuthError("Googleログインに失敗しました。ブラウザのセキュリティ設定でポップアップが制限されているか、Cookieが無効になっている可能性があります。別ブラウザでお試しください。");
+        }
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setAuthError("ログインがキャンセルされました。");
+      } else {
+        setAuthError(`Googleでのログインに失敗しました (${error.code || '未知のエラー'})。ポップアップをブロック解除するか、もう一度お試しください。`);
+      }
     }
   };
 
@@ -442,12 +473,32 @@ export default function Home() {
         </p>
 
         <div className="w-full max-w-sm bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
-          <h2 className="text-lg font-bold text-stone-700 mb-4 text-center">
-            {isSignUpMode ? '新規アカウント登録' : 'ログインして始める'}
-          </h2>
+          {/* ログイン・新規登録トグルタブ */}
+          <div className="flex border-b border-stone-100 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignUpMode(false);
+                setAuthError(null);
+              }}
+              className={`flex-1 pb-3 text-sm font-extrabold border-b-2 text-center transition-all ${!isSignUpMode ? 'border-orange-400 text-stone-800' : 'border-transparent text-stone-400 hover:text-stone-600'}`}
+            >
+              ログイン
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignUpMode(true);
+                setAuthError(null);
+              }}
+              className={`flex-1 pb-3 text-sm font-extrabold border-b-2 text-center transition-all ${isSignUpMode ? 'border-orange-400 text-stone-800' : 'border-transparent text-stone-400 hover:text-stone-600'}`}
+            >
+              新規登録
+            </button>
+          </div>
 
           {authError && (
-            <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl border border-rose-100 text-center">
+            <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl border border-rose-100 text-center leading-relaxed">
               {authError}
             </div>
           )}
@@ -477,7 +528,7 @@ export default function Home() {
               type="submit"
               className="w-full bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition active:scale-95 shadow-sm"
             >
-              {isSignUpMode ? 'メールアドレスで登録' : 'ログイン'}
+              {isSignUpMode ? '新規アカウントを作成' : 'ログイン'}
             </button>
           </form>
 
@@ -487,23 +538,18 @@ export default function Home() {
           </div>
 
           <button 
+            type="button"
             onClick={handleGoogleLogin}
-            className="w-full bg-white border border-stone-200 shadow-sm hover:bg-stone-50 text-stone-600 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition active:scale-95 text-sm mb-4"
+            className="w-full bg-white border border-stone-200 shadow-sm hover:bg-stone-50 hover:border-stone-300 text-stone-700 font-extrabold py-3.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-sm mb-2"
           >
-            <span className="text-lg">G</span> Googleで続ける
+            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+            </svg>
+            <span>Googleで続ける</span>
           </button>
-
-          <div className="text-center mt-6">
-            <button 
-              onClick={() => {
-                setIsSignUpMode(!isSignUpMode);
-                setAuthError(null);
-              }}
-              className="text-xs text-stone-500 hover:text-orange-500 font-bold underline-offset-2 hover:underline transition"
-            >
-              {isSignUpMode ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}
-            </button>
-          </div>
         </div>
       </div>
     );
