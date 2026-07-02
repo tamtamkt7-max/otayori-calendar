@@ -51,12 +51,14 @@ export default function AdBanner({ slot, className = "", isPremium = false }: Ad
   }
 
   // 本番環境でのGoogle AdSenseコード
+  const adClientId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID || "ca-pub-5461809032953003";
+
   return (
     <div className={`my-4 text-center overflow-hidden ${className}`}>
       <span className="text-[9px] text-stone-400 block mb-1">スポンサーリンク</span>
       <ins className="adsbygoogle"
            style={{ display: 'block' }}
-           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // 実際の設定値はAdSenseアカウントに合わせてください
+           data-ad-client={adClientId}
            data-ad-slot={slot}
            data-ad-format="auto"
            data-full-width-responsive="true"></ins>
