@@ -1,7 +1,11 @@
-import * as admin from 'firebase-admin';
-import { initializeApp, cert } from 'firebase-admin/app';
+import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getAuth, Auth } from 'firebase-admin/auth';
+
+// グローバルスコープでのキャッシュ退避定義 (二重初期化の完全防止)
+declare global {
+  var firebaseAdminApp: App | undefined;
+}
 
 let db: Firestore;
 let auth: Auth;
@@ -36,7 +40,16 @@ function parseFirebaseServiceAccount(rawJson: string) {
 }
 
 try {
-  if (!(admin as any).apps.length) {
+  let app: App;
+  
+  if (global.firebaseAdminApp) {
+    app = global.firebaseAdminApp;
+    console.log("[Firebase Admin Helper] Reusing global Firebase Admin instance.");
+  } else if (getApps().length > 0) {
+    app = getApps()[0];
+    global.firebaseAdminApp = app;
+    console.log("[Firebase Admin Helper] Reusing existing SDK Firebase Admin instance.");
+  } else {
     const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!serviceAccountStr) {
       throw new Error("FIREBASE_SERVICE_ACCOUNT is not set in env variables.");
@@ -48,10 +61,11 @@ try {
       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
     
-    initializeApp({
+    app = initializeApp({
       credential: cert(serviceAccount)
     });
-    console.log("[Firebase Admin Helper] Firebase Admin initialized successfully.");
+    global.firebaseAdminApp = app;
+    console.log("[Firebase Admin Helper] Firebase Admin initialized and cached globally.");
   }
   
   db = getFirestore();
