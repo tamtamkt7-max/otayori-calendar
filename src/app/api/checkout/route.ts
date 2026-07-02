@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
     // 3. Stripe Price IDの取得とCheckoutセッションの生成
     const priceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
-    const lineItem = priceId
+    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = priceId
       ? { price: priceId, quantity: 1 }
       : {
           price_data: {
