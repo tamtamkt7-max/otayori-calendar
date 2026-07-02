@@ -759,6 +759,7 @@ export default function Home() {
                 ))}
               </div>
               <div className="pt-2">
+                <AdBanner slot="scan-result-bottom" isPremium={userStatus.isPremium} />
                 <button onClick={() => setScanResult(null)} className="w-full py-3.5 bg-teal-400 hover:bg-teal-500 text-white font-bold rounded-full transition active:scale-95 text-sm shadow-sm">確認完了（閉じる）</button>
               </div>
             </div>
