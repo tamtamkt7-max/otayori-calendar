@@ -193,6 +193,16 @@ Firestoreでのレースコンディションによる Permission Denied、お�
 2. **Stripe Price ID に対する厳格なバリデーション**:
    - Vercel環境変数 `NEXT_PUBLIC_STRIPE_PRICE_ID` が登録されているものの値が空、または無効な指定である場合に Stripe SDK がクラッシュするのを防ぐため、IDが `price_` で始まる場合のみ Price ID として使い、それ以外は安全な `price_data` 生成方式へフォールバックするロジックに強化しました。
 
+### 12. Firebase Admin 共通初期化ヘルパーの新設とセキュリティルール最適化
+本番環境での環境変数パースの不具合、およびセキュリティルールの過剰なDB読み込みに伴う Permission Denied の解消設計です。
+
+1. **`src/lib/firebaseAdmin.ts` 共通ヘルパーの新設**:
+   - Vercel の環境変数に設定された `FIREBASE_SERVICE_ACCOUNT` の JSON 文字列に含まれる改行コード（`\n`）がエスケープ崩れを起こして `JSON.parse` が構文エラーになるのを防ぐための専用デコーダを実装しました。
+   - すべての API エンドポイント（`checkout`, `events`, `scan`, `webhook`, `send-reminders`）の Firebase 管理者権限初期化処理をこの共通ヘルパーに一本化し、秘密鍵の `\\n` を物理的な改行文字 `\n` に復元してから Admin SDK に渡すように堅牢化しました。これにより 500 Internal Server Error によるクラッシュを完全に根絶しました。
+2. **`firestore.rules` の高速パススルーと存在チェックガード**:
+   - グループ予定の読み書き権限ルールにおいて、`groupId` が自分の UID と一致する（個人利用時）場合は、DB参照なしで無条件でパススルーするルールに最適化しました。
+   - シェア連携時（`groupId != userId`）にのみ別ドキュメントの参照を行います。その際にも、事前に `exists()` による存在ガードを評価させることで、DBへのロード遅延発生時にもルール評価で Runtime Error (Permission Denied) を起こさないように堅牢化しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
