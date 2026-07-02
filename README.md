@@ -267,6 +267,15 @@ SDK 等の非同期イベントループ上で発生した未捕捉の例外が�
    - 代わりに、環境変数のサニタイズ、Firebase Admin SDK の初期化・二重初期化防止・Base64デコード・JSONパース防衛、IDトークンの検証、Firestore接続によるレートリミットチェックをすべて POST 関数の中にインラインで再定義し、完全に自己完結（スタンドアロン）させました。
    - これにより、Next.js / Vercel の関数インポートおよびコンテナ起動フェーズでのモジュール解決や初期化時の競合による即死エラー（`FUNCTION_INVOCATION_FAILED`）の発生源を物理的に根絶しました。
 
+### 21. Firebase Admin SDK の動的インポート（Dynamic Import）への切り替え
+インポート時（コンテナ起動フェーズ）に発生するネイティブバイナリの読み込み衝突や初期化時クラッシュを 100% 回避しつつ、認証機能を安全に復旧させるアーキテクチャです。
+
+1. **非同期 Dynamic Import への切り替え**:
+   - `/api/checkout` の静的インポートを完全に抹消し、`POST` リクエストを受信した段階で初めて非同期 `await import('firebase-admin/app')` および `await import('firebase-admin/auth')` を実行して SDK を動的にロードする構造に書き換えました。
+   - これにより、コンテナ立ち上げ時のモジュールロードの段階では `firebase-admin` のバイナリ読み込みや副作用を「完全にゼロ」に保ち、即死（`FUNCTION_INVOCATION_FAILED`）の可能性を完全に封じ込めました。
+2. **認証機能とStripeメタデータuserIdの完全復旧**:
+   - 動的インポートにより、決済リクエスト送信者の Firebase ID Token を検証し、取得した `userId` を Stripe Checkout セッションのメタデータ（`metadata.userId` および `subscription_data.metadata.userId`）に再度正しく紐付けました。これにより、本番の決済Webhookで誰が支払ったかを正確に検知する機能を復元しました。
+
 ---
 
 ## 📦 ローカル環境構築およびテスト手順
