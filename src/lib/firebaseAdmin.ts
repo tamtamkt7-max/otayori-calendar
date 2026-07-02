@@ -1,7 +1,10 @@
 import * as admin from 'firebase-admin';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getAuth, Auth } from 'firebase-admin/auth';
 
-let db: any;
-let auth: any;
+let db: Firestore;
+let auth: Auth;
 let initError: any = null;
 
 function getDecodedServiceAccountString(rawStr: string): string {
@@ -45,14 +48,14 @@ try {
       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
     
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+    initializeApp({
+      credential: cert(serviceAccount)
     });
     console.log("[Firebase Admin Helper] Firebase Admin initialized successfully.");
   }
   
-  db = admin.firestore();
-  auth = admin.auth();
+  db = getFirestore();
+  auth = getAuth();
 } catch (err: any) {
   console.error("[Firebase Admin Helper] Initialization failed:", err);
   initError = err;
