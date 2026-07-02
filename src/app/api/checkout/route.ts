@@ -1,5 +1,14 @@
 export const runtime = 'nodejs';
 
+if (typeof process !== 'undefined') {
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[checkout API] Unhandled Rejection at Promise:', promise, 'reason:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[checkout API] Uncaught Exception thrown:', err);
+  });
+}
+
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';

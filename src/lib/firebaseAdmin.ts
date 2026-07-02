@@ -1,3 +1,12 @@
+if (typeof process !== 'undefined') {
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Firebase Admin Helper] Unhandled Rejection at Promise:', promise, 'reason:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[Firebase Admin Helper] Uncaught Exception thrown:', err);
+  });
+}
+
 import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getAuth, Auth } from 'firebase-admin/auth';
