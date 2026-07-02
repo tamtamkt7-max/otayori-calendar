@@ -50,7 +50,7 @@ export default function Home() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1));
   const [selectedDateStr, setSelectedDateStr] = useState<string>("2026-07-10");
   const [events, setEvents] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'history'>('month');
   
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<any[] | null>(null);
@@ -828,7 +828,9 @@ export default function Home() {
             <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-extrabold text-stone-700">
-                  {viewMode === 'month' ? `${year}年 ${month + 1}月` : 'スケジュール'}
+                  {viewMode === 'month' && `${year}年 ${month + 1}月`}
+                  {viewMode === 'week' && 'スケジュール'}
+                  {viewMode === 'history' && 'おたよりスキャン履歴'}
                 </h2>
                 <div className="flex rounded-full bg-stone-100 p-0.5 border border-stone-200/50 text-[10px] font-bold">
                   <button
@@ -845,9 +847,17 @@ export default function Home() {
                   >
                     週表示
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('history')}
+                    className={`px-3 py-1 rounded-full transition-all ${viewMode === 'history' ? 'bg-white text-stone-700 shadow-sm' : 'text-stone-400'}`}
+                  >
+                    履歴一覧
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-1 bg-[#FDFBF9] p-1 rounded-full border border-stone-100">
+              {viewMode !== 'history' && (
+                <div className="flex gap-1 bg-[#FDFBF9] p-1 rounded-full border border-stone-100">
                 <button 
                   onClick={() => {
                     if (viewMode === 'month') {
@@ -884,36 +894,90 @@ export default function Home() {
                   ▶
                 </button>
               </div>
+              )}
             </div>
-            <div className="grid grid-cols-7 text-center text-[11px] font-bold text-stone-400 mb-3">
-              <div className="text-rose-300">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div className="text-sky-300">土</div>
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {(viewMode === 'month' ? calendarCells : getWeekCells()).map((date, idx) => {
-                if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
-                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                const isSelected = dateStr === selectedDateStr;
-                const dayEvents = events.filter(e => e.date === dateStr);
-                const hasEvents = dayEvents.length > 0;
-                const uniqueColors = Array.from(new Set(dayEvents.map(e => e.color || 'common')));
-                return (
-                  <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300/30' : 'hover:bg-stone-50 text-stone-600'}`}>
-                    <span className="z-10">{date.getDate()}</span>
-                    {hasEvents && (
-                      <div className="absolute bottom-1.5 flex gap-0.5 justify-center z-10">
-                        {uniqueColors.map(col => {
-                          let dotColor = 'bg-orange-400';
-                          if (col === 'father') dotColor = 'bg-sky-400';
-                          if (col === 'mother') dotColor = 'bg-rose-400';
-                          if (col === 'child') dotColor = 'bg-emerald-400';
-                          return <span key={col} className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>;
-                        })}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {viewMode !== 'history' ? (
+              <>
+                <div className="grid grid-cols-7 text-center text-[11px] font-bold text-stone-400 mb-3">
+                  <div className="text-rose-300">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div className="text-sky-300">土</div>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {(viewMode === 'month' ? calendarCells : getWeekCells()).map((date, idx) => {
+                    if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
+                    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    const isSelected = dateStr === selectedDateStr;
+                    const dayEvents = events.filter(e => e.date === dateStr);
+                    const hasEvents = dayEvents.length > 0;
+                    const uniqueColors = Array.from(new Set(dayEvents.map(e => e.color || 'common')));
+                    return (
+                      <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300/30' : 'hover:bg-stone-50 text-stone-600'}`}>
+                        <span className="z-10">{date.getDate()}</span>
+                        {hasEvents && (
+                          <div className="absolute bottom-1.5 flex gap-0.5 justify-center z-10">
+                            {uniqueColors.map(col => {
+                              let dotColor = 'bg-orange-400';
+                              if (col === 'father') dotColor = 'bg-sky-400';
+                              if (col === 'mother') dotColor = 'bg-rose-400';
+                              if (col === 'child') dotColor = 'bg-emerald-400';
+                              return <span key={col} className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>;
+                            })}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div>
+                {events.filter(e => e.imageUrl).length === 0 ? (
+                  <div className="py-16 text-center text-stone-450 bg-stone-50/50 rounded-2xl border border-dashed border-stone-200 p-6">
+                    <span className="text-4xl block mb-3 opacity-40">📸</span>
+                    <p className="text-xs font-extrabold text-stone-500">スキャンしたおたよりはありません</p>
+                    <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
+                      右側の「プリントを撮る」からおたよりをスキャンすると、画像と自動抽出された予定が履歴としてここに保存されます。
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {events
+                      .filter(e => e.imageUrl)
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .map((ev) => (
+                        <div key={ev.id} className="bg-stone-50/50 border border-stone-200/60 rounded-2xl overflow-hidden hover:border-orange-300 transition flex flex-col">
+                          <div className="aspect-[4/3] bg-stone-100 relative group overflow-hidden border-b border-stone-150 cursor-pointer" onClick={() => setActiveImageUrl(ev.imageUrl)}>
+                            <img src={ev.imageUrl} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                              <span className="text-white text-[10px] font-bold bg-black/60 px-2.5 py-1.5 rounded-full">🔍 拡大表示</span>
+                            </div>
+                          </div>
+                          <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] text-orange-400 font-extrabold">{ev.date}</span>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
+                                  {ev.category === 'school' && '学校・園'}{ev.category === 'event' && '行事'}{ev.category === 'medical' && '保健'}
+                                </span>
+                              </div>
+                              <h4 className="font-extrabold text-stone-700 text-xs mt-1.5 line-clamp-1">{ev.title}</h4>
+                              <p className="text-[10px] text-stone-400 line-clamp-2 mt-1 leading-relaxed">{ev.details || '詳細はありません'}</p>
+                            </div>
+                            <button 
+                              onClick={() => {
+                                setEditingEvent({ ...ev });
+                                setIsEventModalOpen(true);
+                              }}
+                              className="w-full py-2 bg-white hover:bg-stone-100 border border-stone-200 text-stone-600 font-extrabold rounded-xl text-[10px] transition active:scale-95 shadow-sm"
+                            >
+                              ✍️ 予定の確認・編集
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <AdBanner slot="calendar-bottom" isPremium={userStatus.isPremium} />
