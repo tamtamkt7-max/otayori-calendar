@@ -22,6 +22,7 @@ import { auth, googleProvider, db } from '../lib/firebase';
 import { useFcm } from '../hooks/useFcm';
 import AdBanner from '../components/ads/AdBanner';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
+import Link from 'next/link';
 
 export default function Home() {
   // --- 認証関連のState ---
@@ -563,6 +564,15 @@ export default function Home() {
             <span>Googleで続ける</span>
           </button>
         </div>
+
+        {/* 未ログインフッター */}
+        <footer className="mt-8 text-center text-stone-400 text-[10px] space-x-2">
+          <span>&copy; 2026 おたよりカレンダー</span>
+          <span>|</span>
+          <Link href="/terms" className="hover:text-orange-400 transition hover:underline">利用規約</Link>
+          <span>|</span>
+          <Link href="/privacy" className="hover:text-orange-400 transition hover:underline">プライバシーポリシー</Link>
+        </footer>
       </div>
     );
   }
@@ -1157,6 +1167,13 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ログイン後共通フッター */}
+      <footer className="w-full max-w-5xl mx-auto mt-16 px-4 py-8 border-t border-stone-100 text-center text-stone-400 text-xs space-x-4">
+        <span>&copy; 2026 おたよりカレンダー</span>
+        <Link href="/terms" className="hover:text-orange-400 transition hover:underline">利用規約</Link>
+        <Link href="/privacy" className="hover:text-orange-400 transition hover:underline">プライバシーポリシー</Link>
+      </footer>
     </div>
   );
 }
