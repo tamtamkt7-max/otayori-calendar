@@ -69,12 +69,14 @@ export async function POST(req: Request) {
     let scanCount = 0;
     let lastScanMonth = '';
     let plan = 'free';
+    let userGroupId = userId;
 
     if (userDoc.exists) {
       const userData = userDoc.data();
       scanCount = userData?.scanCount || 0;
       lastScanMonth = userData?.lastScanMonth || '';
       plan = userData?.plan || 'free';
+      userGroupId = userData?.groupId || userId;
     }
 
     // 月が変わっている場合は一時的にカウントを0として扱う (後段のトランザクションでリセット)
@@ -170,8 +172,7 @@ export async function POST(req: Request) {
     }
 
     // 2. メンバーの動的取得とファジーマッピング ＆ Firestore直接保存
-    const userDocData = userDoc.exists ? userDoc.data() : null;
-    const currentGroupId = userDocData?.groupId || userId;
+    const currentGroupId = userGroupId;
     
     // グループオーナーの members を取得
     const groupOwnerSnap = await firestore.collection('users').doc(currentGroupId).get();
@@ -197,7 +198,7 @@ export async function POST(req: Request) {
     };
 
     // 最新のFCMトークンを取得しておき、リマインドに紐付ける
-    const fcmTokens: string[] = userDocData?.fcmTokens || [];
+    const fcmTokens: string[] = userDoc.exists ? (userDoc.data()?.fcmTokens || []) : [];
 
     for (let idx = 0; idx < events.length; idx++) {
       const ev = events[idx];
@@ -235,8 +236,8 @@ export async function POST(req: Request) {
         date: ev.date || currentMonthStr + '-01',
         details: cleanDetails,
         category: ev.category || 'school',
-        color: finalMember.color || 'orange',
-        memberId: finalMember.id,
+        color: (finalMember && finalMember.color) ? finalMember.color : 'orange',
+        memberId: (finalMember && finalMember.id) ? finalMember.id : 'owner',
         imageUrl: imageUrl,
         remindThreeDays: true,
         remindOneDay: true,

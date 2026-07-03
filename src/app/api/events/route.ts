@@ -215,3 +215,108 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "予定の保存に失敗しました" }, { status: 500 });
   }
 }
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const groupId = searchParams.get('groupId');
+
+    if (!groupId) {
+      return new Response('groupId is required', { status: 400 });
+    }
+
+    // Firebase Admin の動的インポートと遅延初期化
+    const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
+    const admin = getFirebaseAdmin();
+    const db = admin?.db;
+    if (admin.error || !db) {
+      console.error("[events iCal API] Firebase Admin configuration error:", admin.error);
+      return new Response('Database configuration error', { status: 500 });
+    }
+
+    // Firestore からイベント一覧を取得
+    const eventsSnap = await db.collection('groups').doc(groupId).collection('events').get();
+    const eventList: any[] = [];
+    eventsSnap.forEach((doc: any) => {
+      eventList.push({ id: doc.id, ...doc.data() });
+    });
+
+    const formatDate = (dateStr: string) => dateStr.replace(/-/g, '');
+    const getEndDateStr = (startDateStr: string) => {
+      const date = new Date(startDateStr);
+      date.setDate(date.getDate() + 1);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}${m}${d}`;
+    };
+    const formatTimeStamp = (date: Date) => {
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(date.getUTCDate()).padStart(2, '0');
+      const h = String(date.getUTCHours()).padStart(2, '0');
+      const min = String(date.getUTCMinutes()).padStart(2, '0');
+      const s = String(date.getUTCSeconds()).padStart(2, '0');
+      return `${y}${m}${d}T${h}${min}${s}Z`;
+    };
+
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Antigravity//Otayori Calendar//JP',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:おたよりカレンダー'
+    ];
+
+    const nowStamp = formatTimeStamp(new Date());
+
+    eventList.forEach((event: any, index: number) => {
+      if (!event.date) return;
+      const uid = event.id || `${Date.now()}-${index}@otayori-calendar`;
+      const startStr = formatDate(event.date);
+      let endStr = startStr;
+      try {
+        endStr = getEndDateStr(event.date);
+      } catch (_) {}
+      
+      const summary = (event.title || '予定')
+        .replace(/\\/g, '\\\\')
+        .replace(/,/g, '\\,')
+        .replace(/;/g, '\\;');
+      const description = (event.details || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/,/g, '\\,')
+        .replace(/;/g, '\\;')
+        .replace(/\n/g, '\\n');
+
+      ics.push('BEGIN:VEVENT');
+      ics.push(`UID:${uid}`);
+      ics.push(`DTSTAMP:${nowStamp}`);
+      ics.push(`DTSTART;VALUE=DATE:${startStr}`);
+      ics.push(`DTEND;VALUE=DATE:${endStr}`);
+      ics.push(`SUMMARY:${summary}`);
+      if (description) {
+        ics.push(`DESCRIPTION:${description}`);
+      }
+      ics.push('END:VEVENT');
+    });
+
+    ics.push('END:VCALENDAR');
+    const icsString = ics.join('\r\n');
+
+    return new Response(icsString, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': `attachment; filename="calendar.ics"`,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      }
+    });
+
+  } catch (error: any) {
+    console.error("GET events iCal error:", error);
+    Sentry.captureException(error);
+    return new Response('Internal Server Error', { status: 500 });
+  }
+}
