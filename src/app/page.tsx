@@ -80,6 +80,9 @@ export default function Home() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
+  const [isScanConfirmModalOpen, setIsScanConfirmModalOpen] = useState(false);
+  const [newScannedEvents, setNewScannedEvents] = useState<any[]>([]);
+  const [isEventsLoading, setIsEventsLoading] = useState(true);
 
   // Web Push (FCM) のStateとカスタムフック
   const { 
@@ -107,8 +110,10 @@ export default function Home() {
     const syncData = async () => {
       if (!user) {
         setEvents([]);
+        setIsEventsLoading(false);
         return;
       }
+      setIsEventsLoading(true);
 
       // Firestoreの認証状態が内部で確立されるのを確実に待つための遅延ガード (150ms)
       await new Promise(resolve => setTimeout(resolve, 150));
@@ -223,6 +228,7 @@ export default function Home() {
           groupId: currentGroupId,
           inviteCode: currentInviteCode
         });
+        setIsEventsLoading(false);
       } catch (error: any) {
         console.error("[syncData] Critical data sync error details:", error, {
           code: error?.code,
@@ -240,6 +246,7 @@ export default function Home() {
         } else {
           setErrorMessage("データの読み込みに失敗しました。画面を再読み込みしてください。");
         }
+        setIsEventsLoading(false);
       }
     };
 
@@ -718,6 +725,7 @@ export default function Home() {
     trackEvent(GA_EVENTS.SCAN_START, 'ai_scan', file.name);
     setLoading(true);
     setScanResult(null);
+    setNewScannedEvents([]);
     setErrorMessage(null);
 
     const reader = new FileReader();
@@ -742,10 +750,9 @@ export default function Home() {
 
           trackEvent(GA_EVENTS.SCAN_SUCCESS, 'ai_scan', `events_found_${newEvents.length}`, newEvents.length);
 
-          // API側でFirestoreへの直接保存が完了しているため、フロントでは単にStateをマージするだけ
-          setEvents(prev => [...prev, ...newEvents]);
-          if (newEvents.length > 0) setSelectedDateStr(newEvents[0].date);
-          setScanResult(newEvents);
+          // ポップアップ（確認モーダル）用にデータをセット
+          setNewScannedEvents(newEvents);
+          setIsScanConfirmModalOpen(true);
           setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
         } else {
           if (response.status === 403) {
@@ -1185,69 +1192,42 @@ export default function Home() {
             </div>
           )}
 
-          {scanResult && (
-            <div className="bg-[#F8FAF9] border border-teal-100/50 rounded-3xl p-6 shadow-sm space-y-5 animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-stone-200/50 pb-3">
-                <div>
-                  <h3 className="font-bold text-teal-600 text-base flex items-center gap-2"><span>✨</span> カレンダーに自動登録しました！</h3>
-                  <p className="text-xs text-stone-400 mt-1">以下の内容で登録しました。ここから直接修正も可能です。</p>
+          {isScanConfirmModalOpen && newScannedEvents.length > 0 && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-scaleIn text-center space-y-4">
+                <div className="w-12 h-12 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center mx-auto text-xl animate-bounce">
+                  ✨
                 </div>
-              </div>
-              <div className="space-y-3">
-                {scanResult.map((ev) => (
-                  <div key={ev.id} className="bg-white p-4 rounded-2xl border border-stone-100 focus-within:border-teal-300 focus-within:shadow-sm transition-all space-y-3">
-                    <div className="flex gap-2 flex-wrap">
-                      <input type="text" value={ev.date} onChange={(e) => handleUpdateEvent(ev.id, 'date', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none w-28 focus:ring-1 focus:ring-teal-200" />
-                      <select value={ev.category} onChange={(e) => handleUpdateEvent(ev.id, 'category', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
-                        <option value="school">🏫 学校・園</option><option value="event">🎈 行事</option><option value="medical">🏥 保健</option>
-                      </select>
-                      <select 
-                        value={ev.memberId || 'owner'} 
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const m = members.find(mem => mem.id === val);
-                          if (m) {
-                            handleUpdateEvent(ev.id, 'color', m.color);
-                            handleUpdateEvent(ev.id, 'memberId', m.id);
-                          }
-                        }} 
-                        className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200"
-                      >
-                        {members.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
+                <h3 className="text-base font-extrabold text-stone-850 tracking-tight">
+                  おたよりの解析が完了しました！
+                </h3>
+                <p className="text-[11px] text-stone-400 leading-relaxed">
+                  カレンダーに自動登録した予定は以下の通りです。
+                </p>
+                <div className="bg-stone-50 border border-stone-150/70 rounded-2xl p-4.5 max-h-48 overflow-y-auto text-left space-y-2.5">
+                  {newScannedEvents.map((ev) => (
+                    <div key={ev.id} className="border-b border-stone-150/40 pb-2 last:border-0 last:pb-0">
+                      <span className="text-[9px] bg-orange-100 text-orange-700 font-extrabold px-2 py-0.5 rounded-full mr-2">
+                        {ev.date}
+                      </span>
+                      <span className="text-xs font-black text-stone-700">
+                        {ev.title}
+                      </span>
                     </div>
-                    <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm focus:border-teal-300 focus:ring-0" />
-                    <textarea value={ev.details} onChange={(e) => handleUpdateEvent(ev.id, 'details', e.target.value)} className="w-full text-[11px] text-stone-500 border-none p-2 resize-none h-14 bg-stone-50 rounded-xl focus:ring-1 focus:ring-teal-200" />
-                    
-                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 text-[10px] text-stone-500 font-bold border-t border-stone-100/50">
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" checked={ev.remindThreeDays || false} onChange={(e) => handleUpdateEvent(ev.id, 'remindThreeDays', e.target.checked)} className="rounded text-teal-400 focus:ring-teal-300 focus:ring-1 border-stone-200 scale-90" />
-                        3日前通知
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" checked={ev.remindOneDay || false} onChange={(e) => handleUpdateEvent(ev.id, 'remindOneDay', e.target.checked)} className="rounded text-teal-400 focus:ring-teal-300 focus:ring-1 border-stone-200 scale-90" />
-                        1日前通知
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2 space-y-3">
-                <AdBanner slot="scan-result-bottom" isPremium={userStatus.isPremium} />
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button 
-                    onClick={() => handleExportMultipleIcs(scanResult)} 
-                    className="flex-1 py-3.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold rounded-xl transition active:scale-95 text-xs shadow-sm flex items-center justify-center gap-1.5"
+                  ))}
+                </div>
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEvents(prev => [...prev, ...newScannedEvents]);
+                      if (newScannedEvents.length > 0) setSelectedDateStr(newScannedEvents[0].date);
+                      setScanResult(newScannedEvents);
+                      setIsScanConfirmModalOpen(false);
+                    }}
+                    className="w-full bg-orange-400 hover:bg-orange-500 text-white font-extrabold py-3 px-4 rounded-xl text-xs transition active:scale-95 shadow-sm"
                   >
-                    📅 カレンダー一括登録 (.ics)
-                  </button>
-                  <button 
-                    onClick={() => setScanResult(null)} 
-                    className="flex-1 py-3.5 bg-teal-400 hover:bg-teal-500 text-white font-extrabold rounded-xl transition active:scale-95 text-xs shadow-sm"
-                  >
-                    確認完了（閉じる）
+                    カレンダーに反映する
                   </button>
                 </div>
               </div>
@@ -1312,7 +1292,12 @@ export default function Home() {
             <div className="border-b border-stone-100 pb-3 mb-4 flex items-center justify-between">
               <div><h3 className="font-bold text-stone-600 text-sm">この日の予定</h3><p className="text-[11px] text-orange-400 font-bold mt-0.5">{selectedDateStr}</p></div>
             </div>
-            {filteredEvents.length === 0 ? (
+            {isEventsLoading ? (
+              <div className="space-y-3.5 flex-1">
+                <div className="h-16 bg-stone-100/60 rounded-2xl animate-pulse" />
+                <div className="h-16 bg-stone-100/60 rounded-2xl animate-pulse" />
+              </div>
+            ) : filteredEvents.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-300 my-auto"><span className="text-3xl mb-2 opacity-30">☕</span><p className="text-[11px] font-bold">予定はありません</p></div>
             ) : (
               <div className="space-y-3 flex-1 overflow-y-auto">

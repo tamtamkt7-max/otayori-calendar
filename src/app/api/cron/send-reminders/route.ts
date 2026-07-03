@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const admin = getFirebaseAdmin();
+    const admin = await getFirebaseAdmin();
     const db = admin?.db;
     if (admin.error || !db) {
       console.error("[send-reminders API] Firebase Admin is unavailable:", admin.error);

@@ -7,9 +7,9 @@ if (typeof process !== 'undefined') {
   });
 }
 
-import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
-import { getFirestore, Firestore } from 'firebase-admin/firestore';
-import { getAuth, Auth } from 'firebase-admin/auth';
+import type { App } from 'firebase-admin/app';
+import type { Firestore } from 'firebase-admin/firestore';
+import type { Auth } from 'firebase-admin/auth';
 import { sanitizeEnvVar } from './envSanitizer';
 
 // グローバルスコープでのキャッシュ退避定義 (二重初期化の完全防止)
@@ -48,8 +48,7 @@ function parseFirebaseServiceAccount(rawJson: string) {
   }
 }
 
-// 実行時に初めて呼ばれる、安全な初期化ゲッター（トップレベルでの初期化を廃止し、ロード時クラッシュを根絶）
-export function getFirebaseAdmin() {
+export async function getFirebaseAdmin() {
   try {
     // 1. キャッシュが存在すれば即座に再利用
     if (global.firebaseAdminApp && global.firebaseAdminDb && global.firebaseAdminAuth) {
@@ -59,6 +58,10 @@ export function getFirebaseAdmin() {
         error: global.firebaseAdminError || null
       };
     }
+
+    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+    const { getFirestore } = await import('firebase-admin/firestore');
+    const { getAuth } = await import('firebase-admin/auth');
 
     let app: App;
 

@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     }
 
     const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
-    const admin = getFirebaseAdmin();
+    const admin = await getFirebaseAdmin();
     const firestore = admin?.db;
     if (admin.error || !firestore) {
       console.error("[scan API] Firebase Admin is unavailable:", admin.error);

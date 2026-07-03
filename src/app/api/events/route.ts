@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
     const { Timestamp, FieldValue } = await import('firebase-admin/firestore');
     
-    const admin = getFirebaseAdmin();
+    const admin = await getFirebaseAdmin();
     const db = admin?.db;
     if (admin.error || !db) {
       console.error("[events API] Firebase Admin is unavailable:", admin.error);
@@ -227,7 +227,7 @@ export async function GET(req: Request) {
 
     // Firebase Admin の動的インポートと遅延初期化
     const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
-    const admin = getFirebaseAdmin();
+    const admin = await getFirebaseAdmin();
     const db = admin?.db;
     if (admin.error || !db) {
       console.error("[events iCal API] Firebase Admin configuration error:", admin.error);

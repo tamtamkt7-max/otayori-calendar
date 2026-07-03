@@ -27,7 +27,7 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // ユーザーのプラン状態をFirestoreで更新するヘルパー
 async function updateUserPlan(userId: string, plan: 'premium' | 'free') {
-  const admin = getFirebaseAdmin();
+  const admin = await getFirebaseAdmin();
   const db = admin?.db;
   if (admin.error || !db) {
     throw new Error(`Database connection failed during plan update: ${admin.error?.message || 'Unknown Firebase Admin error'}`);
