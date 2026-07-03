@@ -657,6 +657,46 @@ export default function Home() {
     return weekCells;
   };
 
+  // ブラウザ側で画像を最大長辺1600px、品質0.8のJPEGにリサイズ・圧縮するヘルパー
+  const compressImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const maxLen = 1600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxLen || height > maxLen) {
+          if (width > height) {
+            height = Math.round((height * maxLen) / width);
+            width = maxLen;
+          } else {
+            width = Math.round((width * maxLen) / height);
+            height = maxLen;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          // image/jpeg 品質 0.8 で圧縮
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(compressed);
+        } else {
+          resolve(base64Str); // 失敗時は元の画像を返す
+        }
+      };
+      img.onerror = () => {
+        resolve(base64Str); // 失敗時は元の画像を返す
+      };
+    });
+  };
+
   // --- AIスキャンロジック ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -670,8 +710,10 @@ export default function Home() {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
-      const base64Image = reader.result as string;
+      const rawBase64 = reader.result as string;
       try {
+        // 送信前に画像を自動リサイズ・圧縮し、ペイロードサイズを劇的に削減 (413エラー対策)
+        const base64Image = await compressImage(rawBase64);
         const response = await fetch('/api/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1620,6 +1662,8 @@ export default function Home() {
               </button>
             </div>
           </div>
+        </div>
+      )}
       {/* 設定・家族管理モーダル */}
       {isSettingModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-fadeIn" onClick={() => setIsSettingModalOpen(false)}>
@@ -1822,9 +1866,6 @@ export default function Home() {
               設定を閉じる
             </button>
           </div>
-        </div>
-      )}
-
         </div>
       )}
 
