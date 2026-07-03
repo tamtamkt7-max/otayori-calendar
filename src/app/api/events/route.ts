@@ -113,7 +113,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '無効なカテゴリです。' }, { status: 400 });
     }
 
-    const allowedColors = ['common', 'father', 'mother', 'child'];
+    const allowedColors = ['common', 'father', 'mother', 'child', 'orange', 'blue', 'red', 'green', 'yellow', 'purple', 'pink', 'gray'];
     if (!allowedColors.includes(color)) {
       return NextResponse.json({ error: '無効なカラーです。' }, { status: 400 });
     }

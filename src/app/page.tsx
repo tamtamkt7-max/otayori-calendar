@@ -738,33 +738,14 @@ export default function Home() {
 
         const data = await response.json();
         if (response.ok) {
-          const newEvents = data.events.map((ev: any, idx: number) => ({
-            ...ev,
-            id: `ai-scan-${Date.now()}-${idx}`,
-            imageUrl: data.imageUrl || null
-          }));
+          const newEvents = data.events || [];
 
           trackEvent(GA_EVENTS.SCAN_SUCCESS, 'ai_scan', `events_found_${newEvents.length}`, newEvents.length);
 
-          // API経由でFirestoreに解析結果とリマインド設定を保存
-          if (user) {
-            try {
-              for (const ev of newEvents) {
-                await saveEventToBackend({
-                  ...ev,
-                  remindThreeDays: true, // デフォルトで3日前と1日前の通知をON
-                  remindOneDay: true
-                });
-              }
-            } catch (fsError) {
-              console.error("予定の保存エラー:", fsError);
-              setErrorMessage("おたよりは解析されましたが、予定の保存に失敗しました💦");
-            }
-          }
-
+          // API側でFirestoreへの直接保存が完了しているため、フロントでは単にStateをマージするだけ
           setEvents(prev => [...prev, ...newEvents]);
           if (newEvents.length > 0) setSelectedDateStr(newEvents[0].date);
-          setScanResult(newEvents.map((ev: any) => ({ ...ev, remindThreeDays: true, remindOneDay: true, imageUrl: data.imageUrl || null })));
+          setScanResult(newEvents);
           setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
         } else {
           if (response.status === 403) {

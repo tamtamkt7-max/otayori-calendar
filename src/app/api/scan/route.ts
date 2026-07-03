@@ -169,7 +169,125 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "おたよりの解析データが正しいフォーマットではありませんでした。もう一度撮影・スキャンし直してください。", debug: text }, { status: 500 });
     }
 
-    // 2. トランザクション処理による利用制限数のインクリメント
+    // 2. メンバーの動的取得とファジーマッピング ＆ Firestore直接保存
+    const userDocData = userDoc.exists ? userDoc.data() : null;
+    const currentGroupId = userDocData?.groupId || userId;
+    
+    // グループオーナーの members を取得
+    const groupOwnerSnap = await firestore.collection('users').doc(currentGroupId).get();
+    let groupMembers: any[] = [];
+    if (groupOwnerSnap.exists) {
+      groupMembers = groupOwnerSnap.data()?.members || [];
+    }
+    if (groupMembers.length === 0) {
+      groupMembers = [{ id: 'owner', name: '共通', color: 'orange' }];
+    }
+
+    const { Timestamp } = await import('firebase-admin/firestore');
+    const batch = firestore.batch();
+    const processedEvents: any[] = [];
+
+    // JST 19:00 のDateオブジェクトを作成するヘルパー
+    const getJstDate19 = (dateStr: string, daysOffset: number): Date => {
+      const [yearStr, monthStr, dayStr] = dateStr.split('-');
+      const y = parseInt(yearStr, 10);
+      const m = parseInt(monthStr, 10) - 1; // 0-indexed month
+      const d = parseInt(dayStr, 10) - daysOffset;
+      return new Date(Date.UTC(y, m, d, 10, 0, 0)); // UTC 10:00 = JST 19:00
+    };
+
+    // 最新のFCMトークンを取得しておき、リマインドに紐付ける
+    const fcmTokens: string[] = userDocData?.fcmTokens || [];
+
+    for (let idx = 0; idx < events.length; idx++) {
+      const ev = events[idx];
+      const eventId = `ai-scan-${Date.now()}-${idx}`;
+      const titleText = (ev.title || '').trim();
+      const detailsText = (ev.details || '').trim();
+      
+      // XSSサニタイズ
+      const cleanTitle = titleText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const cleanDetails = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      // メンバーのファジー部分一致検索
+      let matchedMember = groupMembers.find(m => 
+        (m.name && (cleanTitle.includes(m.name) || cleanDetails.includes(m.name)))
+      );
+
+      // ファジーフォールバック (代表キーワード一致)
+      if (!matchedMember) {
+        matchedMember = groupMembers.find(m => {
+          const name = m.name || '';
+          if (name.includes('パパ') && (cleanTitle.includes('パパ') || cleanDetails.includes('パパ') || cleanTitle.includes('父') || cleanDetails.includes('父'))) return true;
+          if (name.includes('ママ') && (cleanTitle.includes('ママ') || cleanDetails.includes('ママ') || cleanTitle.includes('母') || cleanDetails.includes('母'))) return true;
+          if (name.includes('子') && (cleanTitle.includes('子') || cleanDetails.includes('子') || cleanTitle.includes('園児') || cleanDetails.includes('児童'))) return true;
+          return false;
+        });
+      }
+
+      // 最終フォールバック (オーナーメンバー)
+      const finalMember = matchedMember || groupMembers[0];
+
+      // イベントオブジェクト
+      const eventData = {
+        id: eventId,
+        title: cleanTitle || '無題の予定',
+        date: ev.date || currentMonthStr + '-01',
+        details: cleanDetails,
+        category: ev.category || 'school',
+        color: finalMember.color || 'orange',
+        memberId: finalMember.id,
+        imageUrl: imageUrl,
+        remindThreeDays: true,
+        remindOneDay: true,
+        remindCustom: false,
+        customRemindAt: null,
+        updatedAt: new Date().toISOString()
+      };
+
+      processedEvents.push(eventData);
+
+      // Firestoreのeventsサブコレクションへ保存
+      const evRef = firestore.collection('groups').doc(currentGroupId).collection('events').doc(eventId);
+      batch.set(evRef, eventData, { merge: true });
+
+      // リマインド通知予約の自動生成
+      const remindersRef = firestore.collection('reminders');
+      const now = new Date();
+
+      const createReminder = (type: string, scheduledDate: Date, bodyText: string) => {
+        if (scheduledDate.getTime() > now.getTime()) {
+          const rRef = remindersRef.doc();
+          batch.set(rRef, {
+            uid: userId,
+            eventId: eventId,
+            fcmTokens: fcmTokens,
+            scheduledAt: Timestamp.fromDate(scheduledDate),
+            title: '【おたよりリマインド】',
+            body: bodyText,
+            status: 'pending',
+            type: type,
+            createdAt: Timestamp.fromDate(now)
+          });
+        }
+      };
+
+      if (eventData.date) {
+        try {
+          const threeDaysAgoDate = getJstDate19(eventData.date, 3);
+          const bodyTextThree = `「${eventData.title}」の3日前です。準備物の用意はバッチリですか？確認してみましょう！`;
+          createReminder('three_days_ago', threeDaysAgoDate, bodyTextThree);
+
+          const oneDayAgoDate = getJstDate19(eventData.date, 1);
+          const bodyTextOne = `明日は「${eventData.title}」当日です。お忘れ物がないか、もう一度チェック！`;
+          createReminder('one_day_ago', oneDayAgoDate, bodyTextOne);
+        } catch (dateErr) {
+          console.error("Failed to parse reminder JST date offsets for event:", eventData, dateErr);
+        }
+      }
+    }
+
+    // 3. トランザクション処理による利用制限数のインクリメント
     let finalRemaining = 10;
     
     await firestore.runTransaction(async (transaction: any) => {
@@ -187,7 +305,7 @@ export async function POST(req: Request) {
 
       if (fPlan === 'premium') {
         fScanCount += 1;
-        finalRemaining = 9999; // プレミアムは実質無制限
+        finalRemaining = 9999;
         transaction.set(userRef, {
           scanCount: fScanCount,
           lastScanMonth: currentMonthStr
@@ -210,7 +328,10 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json({ success: true, events, remaining: finalRemaining, imageUrl });
+    // すべての書き込みをコミット
+    await batch.commit();
+
+    return NextResponse.json({ success: true, events: processedEvents, remaining: finalRemaining, imageUrl });
 
   } catch (error: any) {
     console.error("API Error:", error);
