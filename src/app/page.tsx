@@ -56,6 +56,7 @@ export default function Home() {
   const [members, setMembers] = useState<any[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberColor, setNewMemberColor] = useState<'common' | 'father' | 'mother' | 'child'>('common');
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'history'>('month');
   
   const [loading, setLoading] = useState(false);
@@ -183,15 +184,23 @@ export default function Home() {
         console.log("[syncData] Fetching group owner document for members sync. Path:", `users/${currentGroupId}`);
         const groupOwnerSnap = await getDoc(doc(db, 'users', currentGroupId));
         let groupMembers: any[] = [];
+        let groupOwnerPlan = 'free';
         if (groupOwnerSnap.exists()) {
           const ownerData = groupOwnerSnap.data();
           groupMembers = ownerData.members || [];
+          groupOwnerPlan = ownerData.plan || 'free';
         }
         if (groupMembers.length === 0) {
           groupMembers = [{ id: 'owner', name: '自分', color: 'common' }];
           await setDoc(doc(db, 'users', currentGroupId), { members: groupMembers }, { merge: true });
         }
         setMembers(groupMembers);
+
+        // 閲覧専用モード (isReadOnly) の判定（パターンB）: 
+        // 自分がグループオーナーではなく、かつグループ所有者がプレミアムプランでない場合に閲覧専用 (true) に設定
+        const readOnlyState = (currentGroupId !== user.uid) && (groupOwnerPlan !== 'premium');
+        setIsReadOnly(readOnlyState);
+        console.log("[syncData] readOnlyState evaluated:", readOnlyState, { currentGroupId, userUid: user.uid, groupOwnerPlan });
 
         // Stateを同期
         setUserStatus({
@@ -395,11 +404,19 @@ export default function Home() {
       const partnerData = partnerDoc.data();
       const partnerGroupId = partnerData.groupId || partnerDoc.id;
       
-      // カレンダー所有者（共有の接続先グループのオーナー）がプレミアム会員であるか検証する
+      // 家族共有の人数制限チェック（パターンB）
       const partnerPlan = partnerData.plan || 'free';
+      const usersInGroupQuery = query(collection(db, 'users'), where('groupId', '==', partnerGroupId));
+      const usersInGroupSnap = await getDocs(usersInGroupQuery);
+      const currentMemberCount = usersInGroupSnap.size;
+
       if (partnerPlan !== 'premium') {
-        alert("カレンダー所有者（招待コードの発行元）がプレミアムプランに加入していないため、カレンダーを共有できません。\n共有・連携機能を利用するには、カレンダー所有者がプレミアムプランに加入している必要があります。");
-        return;
+        // カレンダー所有者が無料プランの場合、招待可能人数は1名まで（グループ合計2名まで）
+        if (currentMemberCount >= 2) {
+          alert("共有先のカレンダー所有者が無料プランのため、これ以上共有メンバーを追加できません。\n3人以上で共有するには、カレンダー所有者がプレミアムプランに加入する必要があります。");
+          return;
+        }
+        alert("カレンダー所有者が無料プランのため、「閲覧専用（読み取り専用）モード」として連携します。\n（予定の追加・変更・削除は行えません）");
       }
       
       if (partnerDoc.id === user.uid) {
@@ -1114,7 +1131,7 @@ export default function Home() {
                               }}
                               className="w-full py-2 bg-white hover:bg-stone-100 border border-stone-200 text-stone-600 font-extrabold rounded-xl text-[10px] transition active:scale-95 shadow-sm"
                             >
-                              ✍️ 予定の確認・編集
+                              {isReadOnly ? '👁️ 予定の確認（閲覧のみ）' : '✍️ 予定の確認・編集'}
                             </button>
                           </div>
                         </div>
@@ -1206,18 +1223,35 @@ export default function Home() {
 
         <div className="space-y-6">
           <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 text-center">
+            {isReadOnly && (
+              <div className="mb-3.5 p-3 bg-amber-50 border border-amber-100 rounded-2xl text-[10px] text-amber-800 font-bold leading-relaxed text-left">
+                🔒 共有相手が無料プランのため「閲覧専用モード」です。新規登録や予定の編集・削除は行えません。共同編集するには、カレンダー所有者がプレミアムプランに加入する必要があります。
+              </div>
+            )}
             <h3 className="font-bold text-stone-500 text-xs text-left mb-3">かんたん登録</h3>
-            <label className="w-full py-7 px-4 bg-orange-200 hover:bg-orange-300 text-orange-900 rounded-3xl font-black text-base transition-all active:scale-95 flex flex-col items-center justify-center gap-2 group cursor-pointer">
+            <label 
+              onClick={(e) => {
+                if (isReadOnly) {
+                  e.preventDefault();
+                  alert("現在は「閲覧専用モード」のため、新しくおたよりをスキャンして予定を追加することはできません。");
+                }
+              }}
+              className={`w-full py-7 px-4 bg-orange-200 hover:bg-orange-300 text-orange-900 rounded-3xl font-black text-base transition-all active:scale-95 flex flex-col items-center justify-center gap-2 group cursor-pointer ${isReadOnly ? 'opacity-55 cursor-not-allowed bg-stone-200 text-stone-500 hover:bg-stone-200' : ''}`}
+            >
               <span className="text-3xl group-hover:scale-110 transition-transform opacity-80">📷</span>
               <div>
                 <p className="text-sm font-bold">プリントを撮る</p>
                 <p className="text-[10px] text-orange-700/80 font-medium mt-1">カメラ / フォルダから選ぶ</p>
               </div>
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading} />
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading || isReadOnly} />
             </label>
 
             <button 
               onClick={() => {
+                if (isReadOnly) {
+                  alert("現在は「閲覧専用モード」のため、手動で予定を追加することはできません。");
+                  return;
+                }
                 setEditingEvent({
                   title: "",
                   date: todayStr, // 開いた当日の現在日付をデフォルトに設定
@@ -1232,7 +1266,7 @@ export default function Home() {
                 });
                 setIsEventModalOpen(true);
               }}
-              className="w-full mt-3 py-3 bg-stone-50 hover:bg-stone-100 text-stone-600 font-bold rounded-2xl text-xs transition active:scale-95 border border-stone-200"
+              className={`w-full mt-3 py-3 bg-stone-50 hover:bg-stone-100 text-stone-600 font-bold rounded-2xl text-xs transition active:scale-95 border border-stone-200 ${isReadOnly ? 'opacity-50 cursor-not-allowed hover:bg-stone-50' : ''}`}
             >
               ✍️ 手動で予定を追加する
             </button>
@@ -1290,17 +1324,19 @@ export default function Home() {
                               setIsEventModalOpen(true);
                             }}
                             className="text-stone-400 hover:text-orange-400 text-xs p-1"
-                            title="予定を編集"
+                            title={isReadOnly ? "予定の詳細を表示" : "予定を編集"}
                           >
-                            ✏️
+                            {isReadOnly ? '👁️' : '✏️'}
                           </button>
-                          <button 
-                            onClick={() => handleDeleteEvent(ev.id)}
-                            className="text-stone-400 hover:text-rose-400 text-xs p-1"
-                            title="予定を削除"
-                          >
-                            🗑️
-                          </button>
+                          {!isReadOnly && (
+                            <button 
+                              onClick={() => handleDeleteEvent(ev.id)}
+                              className="text-stone-400 hover:text-rose-400 text-xs p-1"
+                              title="予定を削除"
+                            >
+                              🗑️
+                            </button>
+                          )}
                         </div>
                       </div>
                       <h4 className="font-bold text-stone-700 text-sm mt-2.5">{ev.title}</h4>
@@ -1364,7 +1400,7 @@ export default function Home() {
             className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-xl animate-scaleIn text-left space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <h3 className="text-base font-extrabold text-stone-800 tracking-tight">
-              {editingEvent.id ? '✏️ 予定を編集する' : '✍️ 新しい予定を追加する'}
+              {isReadOnly ? '👁️ 予定を確認する（閲覧のみ）' : (editingEvent.id ? '✏️ 予定を編集する' : '✍️ 新しい予定を追加する')}
             </h3>
             
             <div className="space-y-3">
@@ -1373,14 +1409,15 @@ export default function Home() {
                 <select 
                   value={editingEvent.category || 'school'} 
                   onChange={(e) => setEditingEvent({ ...editingEvent, category: e.target.value })} 
-                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                  disabled={isReadOnly}
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold disabled:opacity-80"
                 >
                   <option value="school">🏫 学校・園</option>
                   <option value="event">🎈 行事・イベント</option>
                   <option value="medical">🏥 保健・病院</option>
                 </select>
               </div>
-
+ 
               <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">予定の対象（メンバー）</label>
                 <div className="flex gap-2.5 mt-1 flex-wrap">
@@ -1395,8 +1432,12 @@ export default function Home() {
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setEditingEvent({ ...editingEvent, color: m.color, memberId: m.id })}
-                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold text-white transition active:scale-95 ${btnColor} ${isSelected ? 'ring-2 ring-stone-850 ring-offset-1 scale-105 shadow-sm' : 'opacity-70 hover:opacity-100'}`}
+                        onClick={() => {
+                          if (isReadOnly) return;
+                          setEditingEvent({ ...editingEvent, color: m.color, memberId: m.id });
+                        }}
+                        disabled={isReadOnly}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold text-white transition active:scale-95 ${btnColor} ${isSelected ? 'ring-2 ring-stone-850 ring-offset-1 scale-105 shadow-sm' : 'opacity-70 hover:opacity-100'} disabled:opacity-85 disabled:cursor-not-allowed`}
                       >
                         {m.name}
                       </button>
@@ -1404,7 +1445,7 @@ export default function Home() {
                   })}
                 </div>
               </div>
-
+ 
               <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">日付</label>
                 <input 
@@ -1412,10 +1453,11 @@ export default function Home() {
                   required
                   value={editingEvent.date || ''} 
                   onChange={(e) => setEditingEvent({ ...editingEvent, date: e.target.value })} 
-                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                  disabled={isReadOnly}
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold disabled:opacity-80"
                 />
               </div>
-
+ 
               <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">タイトル</label>
                 <input 
@@ -1423,19 +1465,21 @@ export default function Home() {
                   required
                   value={editingEvent.title || ''} 
                   onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })} 
-                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-700 font-bold"
+                  disabled={isReadOnly}
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-700 font-bold disabled:opacity-80"
                 />
               </div>
-
+ 
               <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">詳細（持ち物など）</label>
                 <textarea 
                   value={editingEvent.details || ''} 
                   onChange={(e) => setEditingEvent({ ...editingEvent, details: e.target.value })} 
-                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-500 font-bold h-20 resize-none"
+                  disabled={isReadOnly}
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-500 font-bold h-20 resize-none disabled:opacity-80"
                 />
               </div>
-
+ 
               {/* リマインド通知設定 */}
               <div className="space-y-2 p-3 bg-stone-100/50 rounded-2xl border border-stone-200/50">
                 <p className="text-[10px] font-bold text-stone-500 tracking-wider">🔔 リマインド通知設定</p>
@@ -1444,7 +1488,8 @@ export default function Home() {
                     type="checkbox" 
                     checked={editingEvent.remindThreeDays || false} 
                     onChange={(e) => setEditingEvent({ ...editingEvent, remindThreeDays: e.target.checked })} 
-                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                    disabled={isReadOnly}
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200 disabled:opacity-80"
                   />
                   予定の3日前に通知 (19:00)
                 </label>
@@ -1453,7 +1498,8 @@ export default function Home() {
                     type="checkbox" 
                     checked={editingEvent.remindOneDay || false} 
                     onChange={(e) => setEditingEvent({ ...editingEvent, remindOneDay: e.target.checked })} 
-                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                    disabled={isReadOnly}
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200 disabled:opacity-80"
                   />
                   予定の前日に通知 (19:00)
                 </label>
@@ -1462,7 +1508,8 @@ export default function Home() {
                     type="checkbox" 
                     checked={editingEvent.remindCustom || false} 
                     onChange={(e) => setEditingEvent({ ...editingEvent, remindCustom: e.target.checked })} 
-                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200"
+                    disabled={isReadOnly}
+                    className="rounded text-orange-400 focus:ring-orange-300 focus:ring-1 border-stone-200 disabled:opacity-80"
                   />
                   日時を指定して通知
                 </label>
@@ -1471,30 +1518,46 @@ export default function Home() {
                     type="datetime-local" 
                     value={editingEvent.customRemindAt || ""} 
                     onChange={(e) => setEditingEvent({ ...editingEvent, customRemindAt: e.target.value })} 
-                    className="w-full mt-1 px-3 py-2 text-xs bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold"
+                    disabled={isReadOnly}
+                    className="w-full mt-1 px-3 py-2 text-xs bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-300 transition text-stone-600 font-bold disabled:opacity-80"
                   />
                 )}
               </div>
             </div>
-
+ 
             <div className="flex flex-col gap-2 pt-2">
               <div className="flex gap-2 w-full">
-                <button 
-                  type="submit"
-                  className="flex-1 bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
-                >
-                  保存する
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setIsEventModalOpen(false);
-                    setEditingEvent(null);
-                  }}
-                  className="flex-1 bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3.5 rounded-xl text-xs transition active:scale-95"
-                >
-                  キャンセル
-                </button>
+                {!isReadOnly ? (
+                  <>
+                    <button 
+                      type="submit"
+                      className="flex-1 bg-orange-400 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
+                    >
+                      保存する
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setIsEventModalOpen(false);
+                        setEditingEvent(null);
+                      }}
+                      className="flex-1 bg-white hover:bg-stone-50 text-stone-500 border border-stone-200 font-bold py-3.5 rounded-xl text-xs transition active:scale-95"
+                    >
+                      キャンセル
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsEventModalOpen(false);
+                      setEditingEvent(null);
+                    }}
+                    className="w-full bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold py-3.5 rounded-xl text-xs transition active:scale-95 shadow-sm"
+                  >
+                    確認を閉じる
+                  </button>
+                )}
               </div>
               
               {editingEvent.id && (
@@ -1620,7 +1683,7 @@ export default function Home() {
                         <span className={`w-3 h-3 rounded-full ${badgeColor}`}></span>
                         <span className="font-bold text-stone-700">{m.name}</span>
                       </div>
-                      {m.id !== 'owner' ? (
+                      {m.id !== 'owner' && !isReadOnly ? (
                         <button 
                           onClick={() => handleRemoveMember(m.id)}
                           className="text-[10px] text-rose-500 hover:text-rose-700 font-bold px-2 py-1 bg-white border border-stone-200 rounded-lg transition shadow-sm"
@@ -1628,7 +1691,9 @@ export default function Home() {
                           削除
                         </button>
                       ) : (
-                        <span className="text-[9px] text-stone-400 font-bold px-2 py-1 bg-stone-100 rounded-lg">管理者</span>
+                        <span className="text-[9px] text-stone-400 font-bold px-2 py-1 bg-stone-100 rounded-lg">
+                          {m.id === 'owner' ? '管理者' : '閲覧のみ'}
+                        </span>
                       )}
                     </div>
                   );
@@ -1636,41 +1701,47 @@ export default function Home() {
               </div>
 
               {/* メンバー追加フォーム */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleAddMember(newMemberName, newMemberColor);
-                }} 
-                className="bg-white p-3.5 rounded-2xl border border-stone-100/80 shadow-sm space-y-3"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="例: ママ、長男" 
-                    required
-                    value={newMemberName}
-                    onChange={(e) => setNewMemberName(e.target.value)}
-                    className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-700 font-bold w-full"
-                  />
-                  <select 
-                    value={newMemberColor}
-                    onChange={(e) => setNewMemberColor(e.target.value as any)}
-                    className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-600 font-bold"
-                  >
-                    <option value="common">👪 共通（オレンジ）</option>
-                    <option value="father">👨 パパ（青）</option>
-                    <option value="mother">👩 ママ（赤）</option>
-                    <option value="child">👶 子供（緑）</option>
-                  </select>
-                </div>
-                <button 
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2 bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-[11px] rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+              {!isReadOnly ? (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAddMember(newMemberName, newMemberColor);
+                  }} 
+                  className="bg-white p-3.5 rounded-2xl border border-stone-100/80 shadow-sm space-y-3"
                 >
-                  新しいメンバーを追加する
-                </button>
-              </form>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="例: ママ、長男" 
+                      required
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-700 font-bold w-full"
+                    />
+                    <select 
+                      value={newMemberColor}
+                      onChange={(e) => setNewMemberColor(e.target.value as any)}
+                      className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-600 font-bold"
+                    >
+                      <option value="common">👪 共通（オレンジ）</option>
+                      <option value="father">👨 パパ（青）</option>
+                      <option value="mother">👩 ママ（赤）</option>
+                      <option value="child">👶 子供（緑）</option>
+                    </select>
+                  </div>
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2 bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-[11px] rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+                  >
+                    新しいメンバーを追加する
+                  </button>
+                </form>
+              ) : (
+                <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-2xl text-[10px] text-amber-800 font-bold leading-relaxed text-center">
+                  ⚠️ 「閲覧専用モード」のため、メンバーの追加・編集はカレンダー所有者側のみ行えます。
+                </div>
+              )}
             </div>
 
             {/* 🔗 家族カレンダー共有（アカウント連携） */}
@@ -1678,7 +1749,7 @@ export default function Home() {
               <div>
                 <h4 className="text-xs font-black text-stone-700">🔗 カレンダー共有（家族シェア）</h4>
                 <p className="text-[10px] text-stone-400 leading-relaxed mt-0.5">
-                  招待コードを用いてパートナーとカレンダーをリアルタイム相互同期します。（カレンダー所有者のプレミアム加入が必要）
+                  招待コードを用いてパートナーとカレンダーを同期します。（無料プランは閲覧専用として1名連携可能。共同編集にはカレンダー所有者のプレミアムプラン加入が必要）
                 </p>
               </div>
 

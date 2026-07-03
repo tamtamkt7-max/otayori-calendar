@@ -2,9 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
-import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
 import { checkRateLimit } from '../../../lib/rateLimit';
-import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(req: Request) {
   try {
@@ -19,11 +17,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'イベント情報が正しくありません' }, { status: 400 });
     }
 
+    // 1. Firebase Admin の動的インポートと遅延初期化
+    const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
+    const { Timestamp, FieldValue } = await import('firebase-admin/firestore');
+    
     const admin = getFirebaseAdmin();
     const db = admin?.db;
     if (admin.error || !db) {
       console.error("[events API] Firebase Admin is unavailable:", admin.error);
       return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
+    }
+
+    // 2. カレンダー共有制限（パターンB）: 
+    // 共有されている側（userId !== targetGroupId）であり、かつカレンダー所有者（targetGroupId）がプレミアム会員ではない場合、書き込み（保存/削除）を拒否
+    const targetGroupId = groupId || userId;
+    if (userId !== targetGroupId) {
+      const groupOwnerDoc = await db.collection('users').doc(targetGroupId).get();
+      const groupOwnerPlan = groupOwnerDoc.exists ? (groupOwnerDoc.data()?.plan || 'free') : 'free';
+      if (groupOwnerPlan !== 'premium') {
+        return NextResponse.json({ 
+          error: 'カレンダー所有者が無料プランのため、共有カレンダーは「閲覧専用（書き込み不可）」です。共同編集を利用するには、カレンダー所有者がプレミアムプランに加入する必要があります。' 
+        }, { status: 403 });
+      }
     }
 
     // セキュリティ対策: レートリミット（1分間に最大15回、1日に最大100回）
@@ -55,7 +70,6 @@ export async function POST(req: Request) {
     }
 
     const eventId = event.id;
-    const targetGroupId = groupId || userId;
     const userEventRef = db.collection('groups').doc(targetGroupId).collection('events').doc(eventId);
     const remindersRef = db.collection('reminders');
 

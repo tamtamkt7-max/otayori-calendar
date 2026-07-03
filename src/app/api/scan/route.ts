@@ -5,8 +5,6 @@ import * as Sentry from '@sentry/nextjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { checkRateLimit } from '../../../lib/rateLimit';
 import crypto from 'crypto';
-import { getFirebaseAdmin } from '../../../lib/firebaseAdmin';
-import { getStorage } from 'firebase-admin/storage';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -23,6 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'ユーザーIDが必要です' }, { status: 400 });
     }
 
+    const { getFirebaseAdmin } = await import('../../../lib/firebaseAdmin');
     const admin = getFirebaseAdmin();
     const firestore = admin?.db;
     if (admin.error || !firestore) {
@@ -110,6 +109,7 @@ export async function POST(req: Request) {
     // Firebase Storageへおたより画像を保存
     let imageUrl: string | null = null;
     try {
+      const { getStorage } = await import('firebase-admin/storage');
       const storage = getStorage();
       const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
       if (!bucketName) {
