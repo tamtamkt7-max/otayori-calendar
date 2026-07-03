@@ -47,9 +47,15 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // --- カレンダー関連 of State ---
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1));
-  const [selectedDateStr, setSelectedDateStr] = useState<string>("2026-07-10");
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const [currentDate, setCurrentDate] = useState(today);
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
   const [events, setEvents] = useState<any[]>([]);
+  const [isSettingModalOpen, setIsSettingModalOpen] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberColor, setNewMemberColor] = useState<'common' | 'father' | 'mother' | 'child'>('common');
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'history'>('month');
   
   const [loading, setLoading] = useState(false);
@@ -172,6 +178,20 @@ export default function Home() {
           fetchedEvents.push({ id: doc.id, ...doc.data() });
         });
         setEvents(fetchedEvents);
+        
+        // 2-2. メンバーリストの取得と同期
+        console.log("[syncData] Fetching group owner document for members sync. Path:", `users/${currentGroupId}`);
+        const groupOwnerSnap = await getDoc(doc(db, 'users', currentGroupId));
+        let groupMembers: any[] = [];
+        if (groupOwnerSnap.exists()) {
+          const ownerData = groupOwnerSnap.data();
+          groupMembers = ownerData.members || [];
+        }
+        if (groupMembers.length === 0) {
+          groupMembers = [{ id: 'owner', name: '自分', color: 'common' }];
+          await setDoc(doc(db, 'users', currentGroupId), { members: groupMembers }, { merge: true });
+        }
+        setMembers(groupMembers);
 
         // Stateを同期
         setUserStatus({
@@ -375,6 +395,13 @@ export default function Home() {
       const partnerData = partnerDoc.data();
       const partnerGroupId = partnerData.groupId || partnerDoc.id;
       
+      // カレンダー所有者（共有の接続先グループのオーナー）がプレミアム会員であるか検証する
+      const partnerPlan = partnerData.plan || 'free';
+      if (partnerPlan !== 'premium') {
+        alert("カレンダー所有者（招待コードの発行元）がプレミアムプランに加入していないため、カレンダーを共有できません。\n共有・連携機能を利用するには、カレンダー所有者がプレミアムプランに加入している必要があります。");
+        return;
+      }
+      
       if (partnerDoc.id === user.uid) {
         alert("自分自身の招待コードを入力することはできません。");
         return;
@@ -430,6 +457,63 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to unlink group:", err);
       alert("連携解除に失敗しました💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- 家族メンバー管理処理（色分け・プレミアム制限） ---
+  const handleAddMember = async (name: string, color: 'common' | 'father' | 'mother' | 'child') => {
+    if (!user || !name.trim()) return;
+    const isPremium = userStatus.isPremium;
+    
+    // 無料プランでは自分を含む「最大2名」まで
+    if (!isPremium && members.length >= 2) {
+      alert("無料プランではメンバー登録数は「2名まで」に制限されています。\nメンバーを3名以上登録して色分けするには、プレミアムプランへの加入が必要です。");
+      setIsLimitModalOpen(true); // プレミアム勧誘モーダルを表示
+      return;
+    }
+    
+    const newMember = {
+      id: `member-${Date.now()}`,
+      name: name.trim(),
+      color: color
+    };
+    
+    const updatedMembers = [...members, newMember];
+    const targetGroupId = userStatus.groupId || user.uid;
+    
+    setLoading(true);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'users', targetGroupId), { members: updatedMembers }, { merge: true });
+      setMembers(updatedMembers);
+      setNewMemberName('');
+      alert("家族メンバーを追加しました！🎉");
+    } catch (err) {
+      console.error("Failed to add member:", err);
+      alert("メンバーの追加に失敗しました。💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!user || memberId === 'owner') return; // ownerのデフォルト（自分）は削除不可
+    if (!confirm("このメンバーを削除しますか？\n（登録済みの予定は削除されず、色分けのみそのまま残ります）")) return;
+    
+    const updatedMembers = members.filter(m => m.id !== memberId);
+    const targetGroupId = userStatus.groupId || user.uid;
+    
+    setLoading(true);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'users', targetGroupId), { members: updatedMembers }, { merge: true });
+      setMembers(updatedMembers);
+      alert("メンバーを削除しました。");
+    } catch (err) {
+      console.error("Failed to remove member:", err);
+      alert("メンバーの削除に失敗しました。💦");
     } finally {
       setLoading(false);
     }
@@ -811,6 +895,13 @@ export default function Home() {
             ) : (
               <span className="text-[10px] bg-amber-50 border border-amber-200 text-amber-600 px-2.5 py-1.5 rounded-full font-extrabold">👑 プレミアム会員</span>
             )}
+            <button
+              onClick={() => setIsSettingModalOpen(true)}
+              className="p-1.5 hover:bg-stone-100 rounded-full transition text-stone-500 hover:text-stone-700 mr-0.5 text-base flex items-center justify-center border border-stone-200/50"
+              title="設定・家族管理"
+            >
+              ⚙️
+            </button>
             <div className="flex items-center gap-2 cursor-pointer group" onClick={handleLogout} title="クリックでログアウト">
               <div className="w-8 h-8 rounded-full border border-stone-200 overflow-hidden bg-stone-100 flex items-center justify-center group-hover:border-orange-300 transition">
                 {user.photoURL ? (
@@ -1059,11 +1150,21 @@ export default function Home() {
                       <select value={ev.category} onChange={(e) => handleUpdateEvent(ev.id, 'category', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
                         <option value="school">🏫 学校・園</option><option value="event">🎈 行事</option><option value="medical">🏥 保健</option>
                       </select>
-                      <select value={ev.color || 'common'} onChange={(e) => handleUpdateEvent(ev.id, 'color', e.target.value)} className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200">
-                        <option value="common">👪 共通</option>
-                        <option value="father">👨 パパ</option>
-                        <option value="mother">👩 ママ</option>
-                        <option value="child">👶 子供</option>
+                      <select 
+                        value={ev.memberId || 'owner'} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const m = members.find(mem => mem.id === val);
+                          if (m) {
+                            handleUpdateEvent(ev.id, 'color', m.color);
+                            handleUpdateEvent(ev.id, 'memberId', m.id);
+                          }
+                        }} 
+                        className="text-xs bg-stone-50 text-stone-600 px-2.5 py-1.5 rounded-lg font-bold border-none focus:ring-1 focus:ring-teal-200"
+                      >
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
                       </select>
                     </div>
                     <input type="text" value={ev.title} onChange={(e) => handleUpdateEvent(ev.id, 'title', e.target.value)} className="w-full font-bold text-stone-700 border-b border-stone-100 p-1 text-sm focus:border-teal-300 focus:ring-0" />
@@ -1112,14 +1213,14 @@ export default function Home() {
                 <p className="text-sm font-bold">プリントを撮る</p>
                 <p className="text-[10px] text-orange-700/80 font-medium mt-1">カメラ / フォルダから選ぶ</p>
               </div>
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={loading} />
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading} />
             </label>
 
             <button 
               onClick={() => {
                 setEditingEvent({
                   title: "",
-                  date: selectedDateStr,
+                  date: todayStr, // 開いた当日の現在日付をデフォルトに設定
                   details: "",
                   category: "school",
                   color: "common",
@@ -1137,70 +1238,7 @@ export default function Home() {
             </button>
           </div>
 
-          {/* 👪 家族シェア（アカウント連携）セクション */}
-          <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5">
-            <h3 className="font-bold text-stone-500 text-xs mb-3 text-left">👪 カレンダー共有（家族シェア）</h3>
-            
-            {user && userStatus.groupId && userStatus.groupId !== user.uid ? (
-              <div className="space-y-3 text-left">
-                <div className="bg-teal-50/70 border border-teal-100 text-teal-800 text-[11px] p-3.5 rounded-2xl font-bold flex items-center justify-between">
-                  <span>👪 家族共有モードで同期中</span>
-                  <button 
-                    onClick={handleUnlinkGroup}
-                    className="text-[10px] text-stone-500 hover:text-rose-500 bg-white border border-stone-200 px-2 py-1 rounded-lg font-bold transition shadow-sm"
-                  >
-                    解除
-                  </button>
-                </div>
-                <p className="text-[10px] text-stone-400 leading-relaxed">
-                  パートナーと同じカレンダーデータをリアルタイムで相互同期しています。追加・編集した予定は自動で共有されます。
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3.5 text-left">
-                <div className="bg-stone-50 border border-stone-150 p-3.5 rounded-2xl">
-                  <p className="text-[10px] text-stone-400 font-bold">あなたの招待コード</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-sm font-black text-stone-700 tracking-wider select-all">{userStatus.inviteCode || '生成中...'}</span>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(userStatus.inviteCode);
-                        alert("招待コードをコピーしました！パートナーへ送信してください。");
-                      }}
-                      className="text-[10px] bg-white hover:bg-stone-100 border border-stone-200 text-stone-600 font-bold px-2.5 py-1 rounded-lg transition shadow-sm"
-                    >
-                      コピー
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <p className="text-[10px] text-stone-400 font-bold">パートナーのコードを入力して連携</p>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const form = e.currentTarget;
-                    const input = form.elements.namedItem('inviteCode') as HTMLInputElement;
-                    handleLinkGroup(input.value);
-                  }} className="flex gap-2">
-                    <input 
-                      name="inviteCode"
-                      type="text" 
-                      placeholder="例: AB12CD34" 
-                      required
-                      className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition"
-                    />
-                    <button 
-                      type="submit"
-                      disabled={loading}
-                      className="bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
-                    >
-                      連携
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
-          </div>
+
 
           <div className="bg-white rounded-3xl shadow-sm shadow-stone-100/50 border border-stone-100 p-5 flex-1 min-h-[300px] flex flex-col">
             <div className="border-b border-stone-100 pb-3 mb-4 flex items-center justify-between">
@@ -1229,6 +1267,11 @@ export default function Home() {
                     child: 'bg-emerald-100 text-emerald-700'
                   };
 
+                  // メンバー情報の紐付けと表示テキスト生成
+                  const matchedMember = members.find(m => m.id === ev.memberId);
+                  const memberLabel = matchedMember ? matchedMember.name : (colorLabels[ev.color || 'common']);
+                  const badgeColorClass = colorBadgeClasses[ev.color || 'common'];
+
                   return (
                     <div key={ev.id} className={`p-3.5 rounded-2xl border relative group transition-all duration-250 ${cardColorClass}`}>
                       <div className="flex justify-between items-start">
@@ -1236,8 +1279,8 @@ export default function Home() {
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ev.category === 'school' ? 'bg-sky-50 text-sky-600' : ''} ${ev.category === 'event' ? 'bg-orange-50 text-orange-600' : ''} ${ev.category === 'medical' ? 'bg-rose-50 text-rose-500' : ''}`}>
                             {ev.category === 'school' && '🏫 学校・園'}{ev.category === 'event' && '🎈 行事'}{ev.category === 'medical' && '🏥 保健'}
                           </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${colorBadgeClasses[ev.color || 'common']}`}>
-                            {colorLabels[ev.color || 'common']}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeColorClass}`}>
+                            {memberLabel}
                           </span>
                         </div>
                         <div className="flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -1339,23 +1382,26 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-stone-400 block mb-1">カラー</label>
-                <div className="flex gap-2.5 mt-1">
-                  {[
-                    { key: 'common', color: 'bg-orange-400', label: '共通' },
-                    { key: 'father', color: 'bg-sky-400', label: 'パパ' },
-                    { key: 'mother', color: 'bg-rose-400', label: 'ママ' },
-                    { key: 'child', color: 'bg-emerald-400', label: '子供' }
-                  ].map(c => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      onClick={() => setEditingEvent({ ...editingEvent, color: c.key })}
-                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold text-white transition active:scale-95 ${c.color} ${editingEvent.color === c.key ? 'ring-2 ring-stone-800 ring-offset-1 scale-105' : 'opacity-85'}`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">予定の対象（メンバー）</label>
+                <div className="flex gap-2.5 mt-1 flex-wrap">
+                  {members.map(m => {
+                    let btnColor = 'bg-orange-400';
+                    if (m.color === 'father') btnColor = 'bg-sky-400';
+                    if (m.color === 'mother') btnColor = 'bg-rose-400';
+                    if (m.color === 'child') btnColor = 'bg-emerald-400';
+                    
+                    const isSelected = editingEvent.memberId === m.id || (!editingEvent.memberId && m.id === 'owner');
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setEditingEvent({ ...editingEvent, color: m.color, memberId: m.id })}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold text-white transition active:scale-95 ${btnColor} ${isSelected ? 'ring-2 ring-stone-850 ring-offset-1 scale-105 shadow-sm' : 'opacity-70 hover:opacity-100'}`}
+                      >
+                        {m.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1511,6 +1557,203 @@ export default function Home() {
               </button>
             </div>
           </div>
+      {/* 設定・家族管理モーダル */}
+      {isSettingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-fadeIn" onClick={() => setIsSettingModalOpen(false)}>
+          <div 
+            className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-scaleIn text-left space-y-6 max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-stone-200/50 pb-3">
+              <h3 className="text-base font-extrabold text-stone-800 tracking-tight">⚙️ 設定・家族管理</h3>
+              <button 
+                onClick={() => setIsSettingModalOpen(false)} 
+                className="text-stone-400 hover:text-stone-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 👑 プランステータス */}
+            <div className="bg-white p-4.5 rounded-2xl border border-stone-150/70 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-stone-400 block">現在のプラン</span>
+                {userStatus.isPremium ? (
+                  <span className="text-sm font-black text-amber-600 flex items-center gap-1 mt-0.5">👑 プレミアム会員（使い放題）</span>
+                ) : (
+                  <span className="text-sm font-black text-stone-600 flex items-center gap-1 mt-0.5">無料プラン（残りスキャン {userStatus.remainingScans}回）</span>
+                )}
+              </div>
+              {!userStatus.isPremium && (
+                <button 
+                  onClick={() => {
+                    setIsSettingModalOpen(false);
+                    handleUpgrade();
+                  }}
+                  disabled={loading}
+                  className="text-[10px] bg-gradient-to-r from-orange-400 to-amber-400 hover:from-orange-500 hover:to-amber-500 text-white px-3 py-2 rounded-xl font-extrabold shadow-sm transition active:scale-95 disabled:opacity-50"
+                >
+                  無制限にする
+                </button>
+              )}
+            </div>
+
+            {/* 👪 家族メンバー管理 */}
+            <div className="space-y-3.5">
+              <div>
+                <h4 className="text-xs font-black text-stone-700">👪 メンバーの登録と色分け</h4>
+                <p className="text-[10px] text-stone-400 leading-relaxed mt-0.5">
+                  カレンダー上で予定を色分け表示するためのメンバーを登録します。（無料プラン：最大2名まで）
+                </p>
+              </div>
+
+              {/* メンバー一覧リスト */}
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {members.map(m => {
+                  let badgeColor = 'bg-orange-400';
+                  if (m.color === 'father') badgeColor = 'bg-sky-400';
+                  if (m.color === 'mother') badgeColor = 'bg-rose-400';
+                  if (m.color === 'child') badgeColor = 'bg-emerald-400';
+                  return (
+                    <div key={m.id} className="flex items-center justify-between bg-stone-50 border border-stone-150 p-2.5 rounded-xl text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${badgeColor}`}></span>
+                        <span className="font-bold text-stone-700">{m.name}</span>
+                      </div>
+                      {m.id !== 'owner' ? (
+                        <button 
+                          onClick={() => handleRemoveMember(m.id)}
+                          className="text-[10px] text-rose-500 hover:text-rose-700 font-bold px-2 py-1 bg-white border border-stone-200 rounded-lg transition shadow-sm"
+                        >
+                          削除
+                        </button>
+                      ) : (
+                        <span className="text-[9px] text-stone-400 font-bold px-2 py-1 bg-stone-100 rounded-lg">管理者</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* メンバー追加フォーム */}
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAddMember(newMemberName, newMemberColor);
+                }} 
+                className="bg-white p-3.5 rounded-2xl border border-stone-100/80 shadow-sm space-y-3"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="例: ママ、長男" 
+                    required
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-700 font-bold w-full"
+                  />
+                  <select 
+                    value={newMemberColor}
+                    onChange={(e) => setNewMemberColor(e.target.value as any)}
+                    className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-600 font-bold"
+                  >
+                    <option value="common">👪 共通（オレンジ）</option>
+                    <option value="father">👨 パパ（青）</option>
+                    <option value="mother">👩 ママ（赤）</option>
+                    <option value="child">👶 子供（緑）</option>
+                  </select>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2 bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-[11px] rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+                >
+                  新しいメンバーを追加する
+                </button>
+              </form>
+            </div>
+
+            {/* 🔗 家族カレンダー共有（アカウント連携） */}
+            <div className="space-y-3.5 border-t border-stone-100 pt-4">
+              <div>
+                <h4 className="text-xs font-black text-stone-700">🔗 カレンダー共有（家族シェア）</h4>
+                <p className="text-[10px] text-stone-400 leading-relaxed mt-0.5">
+                  招待コードを用いてパートナーとカレンダーをリアルタイム相互同期します。（カレンダー所有者のプレミアム加入が必要）
+                </p>
+              </div>
+
+              {user && userStatus.groupId && userStatus.groupId !== user.uid ? (
+                <div className="space-y-3">
+                  <div className="bg-teal-50 border border-teal-100 text-teal-800 text-[11px] p-3 rounded-2xl font-bold flex items-center justify-between shadow-sm">
+                    <span>👪 家族共有モードで同期中</span>
+                    <button 
+                      onClick={() => {
+                        setIsSettingModalOpen(false);
+                        handleUnlinkGroup();
+                      }}
+                      className="text-[9px] text-stone-500 hover:text-rose-500 bg-white border border-stone-200 px-2 py-1 rounded-lg font-bold transition shadow-sm"
+                    >
+                      解除
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-stone-50 border border-stone-150 p-3.5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] text-stone-400 font-bold">あなたの招待コード</p>
+                      <span className="text-sm font-black text-stone-700 tracking-wider select-all mt-0.5 block">{userStatus.inviteCode || '生成中...'}</span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(userStatus.inviteCode);
+                        alert("招待コードをコピーしました！パートナーへ送信してください。");
+                      }}
+                      className="text-[10px] bg-white hover:bg-stone-100 border border-stone-200 text-stone-600 font-bold px-2.5 py-1.5 rounded-lg transition shadow-sm"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="text-[9px] text-stone-400 font-bold">パートナーのコードを入力して連携</p>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const input = form.elements.namedItem('inviteCode') as HTMLInputElement;
+                      setIsSettingModalOpen(false);
+                      handleLinkGroup(input.value);
+                    }} className="flex gap-2">
+                      <input 
+                        name="inviteCode"
+                        type="text" 
+                        placeholder="例: AB12CD34" 
+                        required
+                        className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition font-bold"
+                      />
+                      <button 
+                        type="submit"
+                        disabled={loading}
+                        className="bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+                      >
+                        連携
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setIsSettingModalOpen(false)}
+              className="w-full bg-stone-100 hover:bg-stone-200 text-stone-600 font-extrabold py-3.5 rounded-xl text-xs transition active:scale-95"
+            >
+              設定を閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
         </div>
       )}
 
