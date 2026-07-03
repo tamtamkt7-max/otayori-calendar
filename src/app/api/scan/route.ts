@@ -90,22 +90,22 @@ export async function POST(req: Request) {
     // Base64データとMIMEタイプの抽出
     const mimeTypeMatch = image.match(/data:(.*?);base64,/);
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
-
+ 
     // セキュリティ対策: 画像MIMEタイプの制限 (拡張子制限に相当)
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!allowedMimeTypes.includes(mimeType)) {
       return NextResponse.json({ error: '許可されていないファイル形式です。画像（JPEG/PNG/WEBP/GIF）のみアップロード可能です。' }, { status: 400 });
     }
-
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+ 
+    const base64Data = image.includes(',') ? image.split(',')[1] : image;
     const buffer = Buffer.from(base64Data, 'base64');
-
+ 
     // セキュリティ対策: ファイルサイズ制限 (10MB)
     const MAX_SIZE = 10 * 1024 * 1024; // 10MB
     if (buffer.length > MAX_SIZE) {
       return NextResponse.json({ error: 'ファイルサイズが大きすぎます。10MB以下の画像を指定してください。' }, { status: 400 });
     }
-
+ 
     // Firebase Storageへおたより画像を保存
     let imageUrl: string | null = null;
     try {
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       const bucket = storage.bucket(bucketName);
       const filename = `users/${userId}/letters/${Date.now()}.jpg`;
       const file = bucket.file(filename);
-
+ 
       const downloadToken = crypto.randomUUID();
       await file.save(buffer, {
         metadata: {
@@ -128,16 +128,16 @@ export async function POST(req: Request) {
           }
         }
       });
-
+ 
       imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filename)}?alt=media&token=${downloadToken}`;
       console.log("Successfully uploaded print image to Firebase Storage. URL:", imageUrl);
     } catch (storageError) {
       console.error("Firebase Storage upload error (skipping image link):", storageError);
     }
-
+ 
     // Gemini 1.5 Flash を呼び出し
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+ 
     const prompt = `
     あなたは優秀な学校・園の予定管理アシスタントです。
     与えられた「おたより」の画像から、行事・イベントの予定を漏れなく全て抽出してください。
@@ -151,17 +151,23 @@ export async function POST(req: Request) {
       }
     ]
     `;
-
+ 
     const result = await model.generateContent([
       prompt,
       { inlineData: { data: base64Data, mimeType: mimeType } }
     ]);
-
+ 
     const text = result.response.text();
     
     // JSON文字列のクリーンアップ（Markdown記法が混ざった場合の対策）
     const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const events = JSON.parse(jsonStr);
+    let events = [];
+    try {
+      events = JSON.parse(jsonStr);
+    } catch (jsonError: any) {
+      console.error("Gemini output JSON parse error:", jsonError, "Raw output:", text);
+      return NextResponse.json({ error: "おたよりの解析データが正しいフォーマットではありませんでした。もう一度撮影・スキャンし直してください。", debug: text }, { status: 500 });
+    }
 
     // 2. トランザクション処理による利用制限数のインクリメント
     let finalRemaining = 10;

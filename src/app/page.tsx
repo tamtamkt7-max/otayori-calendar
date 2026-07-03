@@ -35,6 +35,19 @@ const safeParseDate = (dateStr: string | null | undefined): Date => {
   return new Date(sanitized);
 };
 
+export type MemberColor = 'orange' | 'blue' | 'red' | 'green' | 'yellow' | 'purple' | 'pink' | 'gray';
+
+export const COLOR_PALETTE: { id: MemberColor; name: string; bgClass: string; textClass: string; badgeClass: string; cardClass: string; circleClass: string }[] = [
+  { id: 'orange', name: 'オレンジ', bgClass: 'bg-orange-450 hover:bg-orange-500', textClass: 'text-orange-700', badgeClass: 'bg-orange-50 border-orange-100 text-orange-700', cardClass: 'bg-orange-50/15 border-orange-100/60', circleClass: 'bg-orange-400' },
+  { id: 'blue', name: 'ブルー', bgClass: 'bg-sky-400 hover:bg-sky-500', textClass: 'text-sky-700', badgeClass: 'bg-sky-50 border-sky-100 text-sky-700', cardClass: 'bg-sky-50/20 border-sky-100/60', circleClass: 'bg-sky-400' },
+  { id: 'red', name: 'レッド', bgClass: 'bg-rose-400 hover:bg-rose-500', textClass: 'text-rose-700', badgeClass: 'bg-rose-50 border-rose-100 text-rose-700', cardClass: 'bg-rose-50/20 border-rose-100/60', circleClass: 'bg-rose-450' },
+  { id: 'green', name: 'グリーン', bgClass: 'bg-emerald-450 hover:bg-emerald-500', textClass: 'text-emerald-700', badgeClass: 'bg-emerald-50 border-emerald-100 text-emerald-700', cardClass: 'bg-emerald-50/20 border-emerald-100/60', circleClass: 'bg-emerald-400' },
+  { id: 'yellow', name: 'イエロー', bgClass: 'bg-amber-400 hover:bg-amber-500', textClass: 'text-amber-700', badgeClass: 'bg-amber-50 border-amber-100 text-amber-700', cardClass: 'bg-amber-50/20 border-amber-100/60', circleClass: 'bg-amber-400' },
+  { id: 'purple', name: 'パープル', bgClass: 'bg-violet-400 hover:bg-violet-500', textClass: 'text-violet-700', badgeClass: 'bg-violet-50 border-violet-100 text-violet-700', cardClass: 'bg-violet-50/20 border-violet-100/60', circleClass: 'bg-violet-400' },
+  { id: 'pink', name: 'ピンク', bgClass: 'bg-pink-400 hover:bg-pink-500', textClass: 'text-pink-700', badgeClass: 'bg-pink-50 border-pink-100 text-pink-700', cardClass: 'bg-pink-50/20 border-pink-100/60', circleClass: 'bg-pink-400' },
+  { id: 'gray', name: 'グレー', bgClass: 'bg-stone-400 hover:bg-stone-500', textClass: 'text-stone-700', badgeClass: 'bg-stone-50 border-stone-200 text-stone-700', cardClass: 'bg-stone-50/25 border-stone-200/60', circleClass: 'bg-stone-400' }
+];
+
 export default function Home() {
   // --- 認証関連のState ---
   const [user, setUser] = useState<User | null>(null);
@@ -55,7 +68,7 @@ export default function Home() {
   const [isSettingModalOpen, setIsSettingModalOpen] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberColor, setNewMemberColor] = useState<'common' | 'father' | 'mother' | 'child'>('common');
+  const [newMemberColor, setNewMemberColor] = useState<MemberColor>('orange');
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'history'>('month');
   
@@ -480,7 +493,7 @@ export default function Home() {
   };
 
   // --- 家族メンバー管理処理（色分け・プレミアム制限） ---
-  const handleAddMember = async (name: string, color: 'common' | 'father' | 'mother' | 'child') => {
+  const handleAddMember = async (name: string, color: MemberColor) => {
     if (!user || !name.trim()) return;
     const isPremium = userStatus.isPremium;
     
@@ -1119,10 +1132,8 @@ export default function Home() {
                         {hasEvents && (
                           <div className="absolute bottom-1.5 flex gap-0.5 justify-center z-10">
                             {uniqueColors.map(col => {
-                              let dotColor = 'bg-orange-400';
-                              if (col === 'father') dotColor = 'bg-sky-400';
-                              if (col === 'mother') dotColor = 'bg-rose-400';
-                              if (col === 'child') dotColor = 'bg-emerald-400';
+                              const matchedPalette = COLOR_PALETTE.find(p => p.id === col);
+                              const dotColor = matchedPalette ? matchedPalette.circleClass : 'bg-orange-400';
                               return <span key={col} className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>;
                             })}
                           </div>
@@ -1325,28 +1336,14 @@ export default function Home() {
             ) : (
               <div className="space-y-3 flex-1 overflow-y-auto">
                 {filteredEvents.map((ev) => {
-                  let cardColorClass = 'bg-[#FDFBF9] border-stone-100';
-                  if (ev.color === 'father') cardColorClass = 'bg-sky-50/40 border-sky-100/70';
-                  if (ev.color === 'mother') cardColorClass = 'bg-rose-50/40 border-rose-100/70';
-                  if (ev.color === 'child') cardColorClass = 'bg-emerald-50/40 border-emerald-100/70';
-
-                  const colorLabels: Record<string, string> = {
-                    common: '共通',
-                    father: 'パパ',
-                    mother: 'ママ',
-                    child: '子供'
-                  };
-                  const colorBadgeClasses: Record<string, string> = {
-                    common: 'bg-orange-100 text-orange-700',
-                    father: 'bg-sky-100 text-sky-700',
-                    mother: 'bg-rose-100 text-rose-700',
-                    child: 'bg-emerald-100 text-emerald-700'
-                  };
-
-                  // メンバー情報の紐付けと表示テキスト生成
+                  // メンバー情報の紐付けとカラー定義の解決
                   const matchedMember = members.find(m => m.id === ev.memberId);
-                  const memberLabel = matchedMember ? matchedMember.name : (colorLabels[ev.color || 'common']);
-                  const badgeColorClass = colorBadgeClasses[ev.color || 'common'];
+                  const memberColor = matchedMember ? matchedMember.color : (ev.color || 'orange');
+                  const matchedPalette = COLOR_PALETTE.find(p => p.id === memberColor) || COLOR_PALETTE[0];
+
+                  const cardColorClass = matchedPalette.cardClass;
+                  const memberLabel = matchedMember ? matchedMember.name : '共通';
+                  const badgeColorClass = matchedPalette.badgeClass;
 
                   return (
                     <div key={ev.id} className={`p-3.5 rounded-2xl border relative group transition-all duration-250 ${cardColorClass}`}>
@@ -1464,10 +1461,8 @@ export default function Home() {
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">予定の対象（メンバー）</label>
                 <div className="flex gap-2.5 mt-1 flex-wrap">
                   {members.map(m => {
-                    let btnColor = 'bg-orange-400';
-                    if (m.color === 'father') btnColor = 'bg-sky-400';
-                    if (m.color === 'mother') btnColor = 'bg-rose-400';
-                    if (m.color === 'child') btnColor = 'bg-emerald-400';
+                    const matchedPalette = COLOR_PALETTE.find(p => p.id === m.color) || COLOR_PALETTE[0];
+                    const btnColor = matchedPalette.circleClass;
                     
                     const isSelected = editingEvent.memberId === m.id || (!editingEvent.memberId && m.id === 'owner');
                     return (
@@ -1717,10 +1712,8 @@ export default function Home() {
               {/* メンバー一覧リスト */}
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {members.map(m => {
-                  let badgeColor = 'bg-orange-400';
-                  if (m.color === 'father') badgeColor = 'bg-sky-400';
-                  if (m.color === 'mother') badgeColor = 'bg-rose-400';
-                  if (m.color === 'child') badgeColor = 'bg-emerald-400';
+                  const matchedPalette = COLOR_PALETTE.find(p => p.id === m.color) || COLOR_PALETTE[0];
+                  const badgeColor = matchedPalette.circleClass;
                   return (
                     <div key={m.id} className="flex items-center justify-between bg-stone-50 border border-stone-150 p-2.5 rounded-xl text-xs">
                       <div className="flex items-center gap-2">
@@ -1753,30 +1746,37 @@ export default function Home() {
                   }} 
                   className="bg-white p-3.5 rounded-2xl border border-stone-100/80 shadow-sm space-y-3"
                 >
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-3">
                     <input 
                       type="text" 
-                      placeholder="例: ママ、長男" 
+                      placeholder="メンバー名 (例: ママ、長男、はなこ)" 
                       required
                       value={newMemberName}
                       onChange={(e) => setNewMemberName(e.target.value)}
                       className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-700 font-bold w-full"
                     />
-                    <select 
-                      value={newMemberColor}
-                      onChange={(e) => setNewMemberColor(e.target.value as any)}
-                      className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none focus:border-orange-300 transition text-stone-600 font-bold"
-                    >
-                      <option value="common">👪 共通（オレンジ）</option>
-                      <option value="father">👨 パパ（青）</option>
-                      <option value="mother">👩 ママ（赤）</option>
-                      <option value="child">👶 子供（緑）</option>
-                    </select>
+                    <div className="bg-stone-50/50 p-2.5 rounded-xl border border-stone-150/70">
+                      <p className="text-[9px] text-stone-400 font-extrabold mb-2.5">メンバーのテーマカラーを選択</p>
+                      <div className="flex gap-2.5 flex-wrap">
+                        {COLOR_PALETTE.map(p => {
+                          const isSelected = newMemberColor === p.id;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => setNewMemberColor(p.id)}
+                              className={`w-6.5 h-6.5 rounded-full ${p.circleClass} transition-all active:scale-90 border ${isSelected ? 'ring-2 ring-stone-700 ring-offset-1 scale-110 shadow-sm border-white' : 'opacity-65 hover:opacity-100 border-transparent'}`}
+                              title={p.name}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                   <button 
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2 bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-[11px] rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
+                    className="w-full py-2.5 bg-orange-400 hover:bg-orange-500 text-white font-extrabold text-[11px] rounded-xl transition active:scale-95 disabled:opacity-50 shadow-sm"
                   >
                     新しいメンバーを追加する
                   </button>
