@@ -135,8 +135,8 @@ export async function POST(req: Request) {
       console.error("Firebase Storage upload error (skipping image link):", storageError);
     }
  
-    // Gemini 1.5 Flash を呼び出し
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Gemini 3.5 Flash を呼び出し
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
  
     const prompt = `
     あなたは優秀な学校・園の予定管理アシスタントです。
