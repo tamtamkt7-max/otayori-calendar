@@ -783,7 +783,10 @@ export default function Home() {
                       .filter(e => !selectedMemberFilterId || e.memberId === selectedMemberFilterId)
                       .filter(e => e.date === dateStr);
                     const hasEvents = dayEvents.length > 0;
-                    const uniqueColors = Array.from(new Set(dayEvents.map(e => e.color || 'orange')));
+                    const uniqueColors = Array.from(new Set(dayEvents.map(e => {
+                      const matchedMember = members.find(m => m.id === e.memberId);
+                      return matchedMember ? matchedMember.color : (e.color || 'orange');
+                    })));
 
                     return (
                       <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300' : 'hover:bg-stone-50 text-stone-600'}`}>
