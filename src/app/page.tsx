@@ -832,11 +832,10 @@ export default function Home() {
                           </div>
                           <button
                             onClick={() => { setEditingEvent({ ...ev }); setIsEventModalOpen(true); }}
-                            className={`w-full py-2 font-extrabold rounded-xl text-[10px] transition ${
-                              ev.pendingReview
+                            className={`w-full py-2 font-extrabold rounded-xl text-[10px] transition ${ev.pendingReview
                                 ? 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100'
                                 : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-                            }`}
+                              }`}
                           >
                             {ev.pendingReview ? '🔴 内容を確認して完了にする' : '✍️ 予定の確認・編集'}
                           </button>
@@ -1091,12 +1090,12 @@ export default function Home() {
                 不具合のご報告・機能のご要望はフォームからお気軽にどうぞ。開発チームが直接確認します。
               </p>
               <a
-                href="https://forms.gle/FeedbackFormURLHere"
+                href="https://forms.gle/3JihgLJapykUsvbH7"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm"
               >
-                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" /></svg>
                 バグ報告・ご要望はこちら
               </a>
             </div>

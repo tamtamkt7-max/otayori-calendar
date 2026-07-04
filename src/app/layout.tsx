@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "おたよりカレンダー - プリントを撮るだけ！AIが予定を自動登録",
-  description: "保護者必須アプリ。園・学校のおたよりを撮影するだけでAIが解析し、家族カレンダーに自動登録。Googleカレンダー・iPhoneカレンダーとも常時同期。",
+  // ▼ タイトル・説明文 (PM確定仕様 2026-07-04)
+  title: "おたよりカレンダー | プリントを撮るだけ自動登録",
+  description: "園や学校のプリントをパシャッと撮るだけ！AIが予定や持ち物を自動でカレンダーに登録し、家族で共有できる神アプリです。",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -24,8 +25,8 @@ export const metadata: Metadata = {
     title: "おたよりカレンダー",
   },
   openGraph: {
-    title: "おたよりカレンダー - プリントを撮るだけ！AIが予定を自動登録",
-    description: "保護者必須アプリ。園・学校のおたよりを撮影するだけでAIが解析し、家族カレンダーに自動登録。Googleカレンダー・iPhoneカレンダーとも常時同期。",
+    title: "おたよりカレンダー | プリントを撮るだけ自動登録",
+    description: "園や学校のプリントをパシャッと撮るだけ！AIが予定や持ち物を自動でカレンダーに登録し、家族で共有できる神アプリです。",
     url: "https://otayori-calendar.vercel.app",
     siteName: "おたよりカレンダー",
     images: [
@@ -41,8 +42,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "おたよりカレンダー - プリントを撮るだけ！AIが予定を自動登録",
-    description: "保護者必須アプリ。園・学校のおたよりを撮影するだけでAIが自動でカレンダー登録。家族全員と共有できます。",
+    title: "おたよりカレンダー | プリントを撮るだけ自動登録",
+    description: "園や学校のプリントをパシャッと撮るだけ！AIが予定や持ち物を自動でカレンダーに登録し、家族で共有できる神アプリです。",
     images: ["https://otayori-calendar.vercel.app/api/og"],
   },
 };
