@@ -617,7 +617,7 @@ export default function Home() {
           <p className="text-stone-600 text-xs mb-4 leading-relaxed">
             現在はWeb版のみですが、ご利用者が増えればiOS/Androidアプリの開発をスタートします！ぜひ周りの方にもシェアして応援してください📣
           </p>
-          xt=%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%          <div className="flex justify-center gap-3">
+          <div className="flex justify-center gap-3">
             <a href="https://twitter.com/intent/tweet?text=%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E7%AE%A1%E7%90%86%E3%80%81%E9%99%90%E7%95%8C%E3%81%98%E3%82%83%E3%81%AA%E3%81%84%EF%BC%9F%F0%9F%98%82%E5%86%99%E7%9C%9F%E3%82%92%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%EF%BC%86%E6%8F%90%E5%87%BA%E7%89%A9%E3%82%92%E3%83%AA%E3%83%9E%E3%82%A4%E3%83%B3%E3%83%89%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%97%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%85%20https://otayori-calendar-owfg.vercel.app" target="_blank" rel="noopener noreferrer" className="bg-black text-white px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 hover:bg-stone-800 transition shadow-sm">
               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
               𝕏 ポスト
