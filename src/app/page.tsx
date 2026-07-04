@@ -398,6 +398,31 @@ export default function Home() {
     }
   };
 
+  /**
+   * 未処理アラート解除：pendingReview を false にして上書き保存し、モーダルを閉じる
+   */
+  const handleMarkAsReviewed = async () => {
+    if (!user || !editingEvent) return;
+    setLoading(true);
+    try {
+      const reviewedEvent = {
+        ...editingEvent,
+        id: editingEvent.id || `manual-${Date.now()}`,
+        pendingReview: false,
+      };
+      await saveEventToBackend(reviewedEvent);
+      // ローカルの events ステートも即時反映（楽観的更新）
+      setEvents(prev => prev.map(ev => ev.id === reviewedEvent.id ? { ...ev, pendingReview: false } : ev));
+      setIsEventModalOpen(false);
+      setEditingEvent(null);
+      await refetchEvents();
+    } catch (err) {
+      alert('確認済みにする処理に失敗しました💦');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpgrade = async () => {
     try {
       setLoading(true);
@@ -693,9 +718,16 @@ export default function Home() {
                   const matchedMember = members.find(m => m.id === ev.memberId);
                   const matchedPalette = COLOR_PALETTE.find(p => p.id === (matchedMember ? matchedMember.color : (ev.color || 'orange'))) || COLOR_PALETTE[0];
                   return (
-                    <div key={ev.id} className={`p-3.5 rounded-2xl border transition-all ${matchedPalette.cardClass}`}>
+                    <div key={ev.id} className={`p-3.5 rounded-2xl border transition-all ${matchedPalette.cardClass} ${ev.pendingReview ? 'ring-1 ring-rose-200' : ''}`}>
                       <div className="flex justify-between items-start">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${matchedPalette.badgeClass}`}>{matchedMember ? matchedMember.name : '共通'}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${matchedPalette.badgeClass}`}>{matchedMember ? matchedMember.name : '共通'}</span>
+                          {ev.pendingReview && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-500 flex items-center gap-0.5 animate-pulse">
+                              🔴 未確認
+                            </span>
+                          )}
+                        </div>
                         <div className="flex gap-1.5">
                           <button onClick={() => { setEditingEvent(ev); setIsEventModalOpen(true); }} className="text-stone-400 text-xs">✏️</button>
                           {!isReadOnly && <button onClick={() => handleDeleteEvent(ev.id)} className="text-stone-400 text-xs">🗑️</button>}
@@ -779,9 +811,14 @@ export default function Home() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {events.filter(e => e.imageUrl).sort((a, b) => b.date.localeCompare(a.date)).map((ev) => (
-                      <div key={ev.id} className="bg-stone-50 border rounded-2xl overflow-hidden hover:border-orange-300 transition flex flex-col">
+                      <div key={ev.id} className={`bg-stone-50 border rounded-2xl overflow-hidden transition flex flex-col ${ev.pendingReview ? 'border-rose-200 hover:border-rose-300' : 'hover:border-orange-300'}`}>
                         <div className="aspect-[4/3] bg-stone-100 relative group overflow-hidden border-b border-stone-150 cursor-pointer" onClick={() => setActiveImageUrl(ev.imageUrl)}>
                           <img src={ev.imageUrl} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                          {ev.pendingReview && (
+                            <div className="absolute top-2 left-2 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-0.5">
+                              🔴 未確認
+                            </div>
+                          )}
                         </div>
                         <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                           <div>
@@ -793,7 +830,16 @@ export default function Home() {
                             </div>
                             <h4 className="font-extrabold text-stone-700 text-xs mt-1.5 line-clamp-1">{ev.title}</h4>
                           </div>
-                          <button onClick={() => { setEditingEvent({ ...ev }); setIsEventModalOpen(true); }} className="w-full py-2 bg-white border border-stone-200 text-stone-600 font-extrabold rounded-xl text-[10px]">✍️ 予定の確認・編集</button>
+                          <button
+                            onClick={() => { setEditingEvent({ ...ev }); setIsEventModalOpen(true); }}
+                            className={`w-full py-2 font-extrabold rounded-xl text-[10px] transition ${
+                              ev.pendingReview
+                                ? 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100'
+                                : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            {ev.pendingReview ? '🔴 内容を確認して完了にする' : '✍️ 予定の確認・編集'}
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -847,9 +893,18 @@ export default function Home() {
           <form onSubmit={handleSaveModalEvent} className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-extrabold text-stone-850">✍️ 予定の追加・編集</h3>
             <div className="space-y-3">
-              <div><label className="text-[10px] font-bold text-stone-400 block mb-1">タイトル</label><input type="text" required value={editingEvent.title || ''} onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl font-bold" /></div>
-              <div><label className="text-[10px] font-bold text-stone-400 block mb-1">日付</label><input type="date" required value={editingEvent.date || ''} onChange={(e) => setEditingEvent({ ...editingEvent, date: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl font-bold" /></div>
-              <div><label className="text-[10px] font-bold text-stone-400 block mb-1">詳細</label><textarea value={editingEvent.details || ''} onChange={(e) => setEditingEvent({ ...editingEvent, details: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl h-20 resize-none" /></div>
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">タイトル</label>
+                <input type="text" required value={editingEvent.title || ''} onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl font-bold" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">日付</label>
+                <input type="date" required value={editingEvent.date || ''} onChange={(e) => setEditingEvent({ ...editingEvent, date: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl font-bold" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">詳細</label>
+                <textarea value={editingEvent.details || ''} onChange={(e) => setEditingEvent({ ...editingEvent, details: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl h-20 resize-none" />
+              </div>
               <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">誰の予定？</label>
                 <div className="flex gap-2 mt-1 flex-wrap">
@@ -861,10 +916,36 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* 未処理アラートバナー（pendingReview: true の場合のみ表示） */}
+            {editingEvent.pendingReview && (
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 flex items-start gap-2">
+                <span className="text-base mt-0.5">🔴</span>
+                <div>
+                  <p className="text-[10px] font-black text-rose-600">未確認のおたよりです</p>
+                  <p className="text-[9px] text-rose-500 mt-0.5 leading-relaxed">内容を確認したら「確認済みにする」を押してアラートを解除してください。</p>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
-              <button type="submit" className="flex-1 bg-orange-400 text-white font-bold py-3 rounded-xl text-xs shadow-sm">保存する</button>
+              <button type="submit" disabled={loading} className="flex-1 bg-orange-400 text-white font-bold py-3 rounded-xl text-xs shadow-sm disabled:opacity-50">
+                {loading ? '保存中...' : '保存する'}
+              </button>
               <button type="button" onClick={() => { setIsEventModalOpen(false); setEditingEvent(null); }} className="flex-1 bg-white text-stone-500 border font-bold py-3 rounded-xl text-xs">閉じる</button>
             </div>
+
+            {/* 確認済みボタン（pendingReview: true の場合のみ表示） */}
+            {editingEvent.pendingReview && (
+              <button
+                type="button"
+                onClick={handleMarkAsReviewed}
+                disabled={loading}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black py-3.5 rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                ✅ 確認済みにする（アラート解除）
+              </button>
+            )}
           </form>
         </div>
       )}
