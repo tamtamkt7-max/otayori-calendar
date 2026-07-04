@@ -1085,6 +1085,21 @@ export default function Home() {
                 <a href="https://line.me/R/msg/text/?%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E3%82%92%E3%83%91%E3%82%B7%E3%83%A3%E3%83%83%E3%81%A8%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7%E4%BA%88%E5%AE%9A%E3%82%92AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%96%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%85%20https://otayori-calendar.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#06C755] text-white py-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-[#05b04a] transition shadow-sm">LINEで教える</a>
               </div>
             </div>
+            <div className="space-y-2 border-t pt-4">
+              <h4 className="text-xs font-black text-stone-700">💬 ご意見・バグ報告</h4>
+              <p className="text-[9px] text-stone-400 leading-relaxed">
+                不具合のご報告・機能のご要望はフォームからお気軽にどうぞ。開発チームが直接確認します。
+              </p>
+              <a
+                href="https://forms.gle/FeedbackFormURLHere"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                バグ報告・ご要望はこちら
+              </a>
+            </div>
             <button onClick={() => setIsSettingModalOpen(false)} className="w-full bg-stone-100 text-stone-600 font-extrabold py-3 rounded-xl text-xs mt-2">閉じる</button>
           </div>
         </div>
