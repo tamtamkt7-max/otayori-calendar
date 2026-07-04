@@ -4,6 +4,30 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { checkRateLimit } from '../../../lib/rateLimit';
 
+/**
+ * グループ（家族）全員のFCMトークンを収集するヘルパー関数
+ */
+async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<string[]> {
+  const allTokens = new Set<string>();
+  try {
+    const ownerDoc = await db.collection('users').doc(groupOwnerId).get();
+    if (ownerDoc.exists) {
+      const ownerTokens: string[] = ownerDoc.data()?.fcmTokens || [];
+      ownerTokens.forEach((t: string) => allTokens.add(t));
+    }
+    const membersSnapshot = await db.collection('users')
+      .where('groupId', '==', groupOwnerId)
+      .get();
+    membersSnapshot.forEach((memberDoc: any) => {
+      const memberTokens: string[] = memberDoc.data()?.fcmTokens || [];
+      memberTokens.forEach((t: string) => allTokens.add(t));
+    });
+  } catch (err) {
+    console.warn(`[collectGroupFcmTokens] Failed to collect tokens for group ${groupOwnerId}:`, err);
+  }
+  return Array.from(allTokens);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -146,9 +170,8 @@ export async function POST(req: Request) {
     };
     batch.set(userEventRef, eventData, { merge: true });
 
-    // 最新のFCMトークンを取得
-    const userDoc = await db.collection('users').doc(userId).get();
-    const fcmTokens: string[] = userDoc.exists ? (userDoc.data()?.fcmTokens || []) : [];
+    // グループ（家族）全員のFCMトークンを収集
+    const fcmTokens = await collectGroupFcmTokens(db, targetGroupId);
 
     const now = new Date();
 
@@ -159,8 +182,9 @@ export async function POST(req: Request) {
         const reminderDocRef = remindersRef.doc();
         batch.set(reminderDocRef, {
           uid: userId,
+          groupId: targetGroupId, // グループ全員通知のためのグループオーナーID
           eventId: eventId,
-          fcmTokens: fcmTokens,
+          fcmTokens: fcmTokens, // 家族全員のFCMトークン
           scheduledAt: Timestamp.fromDate(scheduledDate),
           title: '【おたよりリマインド】',
           body: bodyText,
