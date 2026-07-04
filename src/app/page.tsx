@@ -612,23 +612,51 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mt-8 text-center shadow-sm w-full max-w-sm">
+        {/* 料金案内 */}
+        <div className="w-full max-w-sm mt-6 rounded-2xl border border-stone-200 overflow-hidden shadow-sm">
+          <div className="bg-stone-50 px-4 py-2 border-b border-stone-200">
+            <p className="text-[10px] font-extrabold text-stone-500 text-center tracking-wider">📋 プラン比較</p>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-stone-200">
+            <div className="p-4 text-center space-y-1">
+              <p className="text-[10px] font-extrabold text-stone-500">無料プラン</p>
+              <p className="text-lg font-black text-stone-700">¥0</p>
+              <p className="text-[9px] text-stone-400 leading-relaxed">月10回まで<br />スキャン可能</p>
+            </div>
+            <div className="p-4 text-center space-y-1 bg-amber-50/60">
+              <p className="text-[10px] font-extrabold text-amber-600">👑 プレミアム</p>
+              <p className="text-lg font-black text-amber-700">¥300<span className="text-xs font-bold">/月</span></p>
+              <p className="text-[9px] text-amber-600 leading-relaxed">スキャン無制限<br />家族共有・同期</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mt-4 text-center shadow-sm w-full max-w-sm">
           <p className="text-orange-800 font-bold text-sm mb-2">🚀 ユーザー増加でアプリ化決定!?</p>
           <p className="text-stone-600 text-xs mb-4 leading-relaxed">
             現在はWeb版のみですが、ご利用者が増えればiOS/Androidアプリの開発をスタートします！ぜひ周りの方にもシェアして応援してください📣
           </p>
           <div className="flex justify-center gap-3">
-            <a href="https://twitter.com/intent/tweet?text=%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E7%AE%A1%E7%90%86%E3%80%81%E9%99%90%E7%95%8C%E3%81%98%E3%82%83%E3%81%AA%E3%81%84%EF%BC%9F%F0%9F%98%82%E5%86%99%E7%9C%9F%E3%82%92%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%EF%BC%86%E6%8F%90%E5%87%BA%E7%89%A9%E3%82%92%E3%83%AA%E3%83%9E%E3%82%A4%E3%83%B3%E3%83%89%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%97%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%85%20https://otayori-calendar-owfg.vercel.app" target="_blank" rel="noopener noreferrer" className="bg-black text-white px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 hover:bg-stone-800 transition shadow-sm">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
-              𝕏 ポスト
-            </a>
-            <a href="https://line.me/R/msg/text/?%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E7%AE%A1%E7%90%86%E3%80%81%E9%99%90%E7%95%8C%E3%81%98%E3%82%83%E3%81%AA%E3%81%84%EF%BC%9F%F0%9F%98%82%E5%86%99%E7%9C%9F%E3%82%92%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%EF%BC%86%E6%8F%90%E5%87%BA%E7%89%A9%E3%82%92%E3%83%AA%E3%83%9E%E3%82%A4%E3%83%B3%E3%83%89%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%97%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%85%20https://otayori-calendar-owfg.vercel.app" target="_blank" rel="noopener noreferrer" className="bg-[#06C755] text-white px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 hover:bg-[#05b04a] transition shadow-sm">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M22.5 10.1c0-4.3-4.1-7.8-9.2-7.8-5.1 0-9.2 3.5-9.2 7.8 0 3.8 2.6 7 6.3 7.6.2.1.6.2.7.5.1.2 0 .7 0 .7s-.2 1-.2 1.3c0 .3-.1 .7.4.9.4.1 1.7-.8 3.5-2.2 2.6-1.9 4-3.8 4.6-4.6.4-1 .8-2.3.8-3.7z" /></svg>
-              LINEで送る
-            </a>
+            {(() => {
+              const viralText = `子どものプリント管理、限界じゃない？😂\n写真を撮るだけでAIがカレンダーに自動登録＆提出物をリマインドしてくれる神アプリ見つけた！📸📆\nhttps://otayori-calendar-owfg.vercel.app`;
+              const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(viralText)}`;
+              const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(viralText)}`;
+              return (
+                <>
+                  <a href={twitterUrl} target="_blank" rel="noopener noreferrer" className="bg-black text-white px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 hover:bg-stone-800 transition shadow-sm">
+                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
+                    𝕏 ポスト
+                  </a>
+                  <a href={lineUrl} target="_blank" rel="noopener noreferrer" className="bg-[#06C755] text-white px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 hover:bg-[#05b04a] transition shadow-sm">
+                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M22.5 10.1c0-4.3-4.1-7.8-9.2-7.8-5.1 0-9.2 3.5-9.2 7.8 0 3.8 2.6 7 6.3 7.6.2.1.6.2.7.5.1.2 0 .7 0 .7s-.2 1-.2 1.3c0 .3-.1 .7.4.9.4.1 1.7-.8 3.5-2.2 2.6-1.9 4-3.8 4.6-4.6.4-1 .8-2.3.8-3.7z" /></svg>
+                    LINEで送る
+                  </a>
+                </>
+              );
+            })()}
           </div>
         </div>
-      </div >
+      </div>
     );
   }
 
@@ -1067,7 +1095,10 @@ export default function Home() {
                 <span className="text-sm font-black tracking-wider text-stone-700 font-mono">{userStatus.inviteCode || '生成中...'}</span>
                 <button onClick={() => { navigator.clipboard.writeText(userStatus.inviteCode); alert("コピーしました！📋"); }} className="text-[10px] bg-white border p-1.5 rounded-lg font-bold shadow-sm">コピー</button>
               </div>
-              <a href={`https://line.me/R/msg/text/?%E3%80%8C%E3%81%8A%E3%81%9F%E3%82%88%E3%82%8A%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%80%8D%E3%82%92%E4%B8%80%E7%B7%92%E3%81%AB%E4%BD%BF%E3%81%8A%E3%81%86%EF%BC%81%0A%E4%B8%8B%E8%A8%98%E3%81%AE%E6%8B%9B%E5%BE%85%E3%82%B3%E3%83%BC%E3%83%89%E3%82%92%E5%85%A5%E5%8A%9B%E3%81%97%E3%81%A6%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3%E3%81%97%E3%81%A6%E3%81%AD%E2%9C%A8%0A%0A%E6%8B%9B%E5%BE%85%E3%82%B3%E3%83%BC%E3%83%89%EF%BC%9A${userStatus.inviteCode || ''}%0A%E3%82%A2%E3%83%97%E3%83%AAURL%EF%BC%9Ahttps%3A%2F%2Fotayori-calendar-owfg.vercel.app`} target="_blank" rel="noopener noreferrer" className="w-full mt-2 py-2.5 bg-[#06C755] hover:bg-[#05b04a] text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm">
+              <a
+                href={`https://line.me/R/msg/text/?${encodeURIComponent(`「おたよりカレンダー」を一緒に使おう！\n下記の招待コードを入力してログインしてね✨\n\n招待コード：${userStatus.inviteCode || ''}\nアプリURL：https://otayori-calendar-owfg.vercel.app`)}`}
+                target="_blank" rel="noopener noreferrer" className="w-full mt-2 py-2.5 bg-[#06C755] hover:bg-[#05b04a] text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm"
+              >
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M22.5 10.1c0-4.3-4.1-7.8-9.2-7.8-5.1 0-9.2 3.5-9.2 7.8 0 3.8 2.6 7 6.3 7.6.2.1.6.2.7.5.1.2 0 .7 0 .7s-.2 1-.2 1.3c0 .3-.1 .7.4.9.4.1 1.7-.8 3.5-2.2 2.6-1.9 4-3.8 4.6-4.6.4-1 .8-2.3.8-3.7z" /></svg>LINEで家族を招待する
               </a>
             </div>
@@ -1075,8 +1106,17 @@ export default function Home() {
             <div className="space-y-2 border-t pt-4">
               <h4 className="text-xs font-black text-stone-700">📢 パパ友・ママ友にアプリを教える</h4>
               <div className="flex gap-2 pt-1">
-                <a href="https://twitter.com/intent/tweet?text=%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E7%AE%A1%E7%90%86%E3%80%81%E9%99%90%E7%95%8C%E3%81%98%E3%82%83%E3%81%AA%E3%81%84%EF%BC%9F%F0%9F%98%82%0A%E5%86%99%E7%9C%9F%E3%82%92%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%EF%BC%86%E6%8F%90%E5%87%BA%E7%89%A9%E3%82%92%E3%83%AA%E3%83%9E%E3%82%A4%E3%83%B3%E3%83%89%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%97%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%86&url=https://otayori-calendar-owfg.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 bg-black text-white py-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-stone-800 transition shadow-sm">𝕏 ポスト</a>
-                <a href="https://line.me/R/msg/text/?%E5%AD%90%E3%81%A9%E3%82%82%E3%81%AE%E3%83%97%E3%83%AA%E3%83%B3%E3%83%88%E7%AE%A1%E7%90%86%E3%80%81%E9%99%90%E7%95%8C%E3%81%98%E3%82%83%E3%81%AA%E3%81%84%EF%BC%9F%F0%9F%98%82%E5%86%99%E7%9C%9F%E3%82%92%E6%92%AE%E3%82%8B%E3%81%A0%E3%81%91%E3%81%A7AI%E3%81%8C%E3%82%AB%E3%83%AC%E3%83%B3%E3%83%80%E3%83%BC%E3%81%AB%E8%87%AA%E5%8B%95%E7%99%BB%E9%8C%B2%EF%BC%86%E6%8F%90%E5%87%BA%E7%89%A9%E3%82%92%E3%83%AA%E3%83%9E%E3%82%A4%E3%83%B3%E3%83%89%E3%81%97%E3%81%A6%E3%81%8F%E3%82%8C%E3%82%8B%E7%A5%9E%E3%82%A2%E3%83%97%E3%83%AA%E8%A6%8B%E3%81%A4%E3%81%91%E3%81%9F%EF%BC%81%F0%9F%93%B8%F0%9F%93%85%20https://otayori-calendar-owfg.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#06C755] text-white py-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-[#05b04a] transition shadow-sm">LINEで教える</a>
+                {(() => {
+                  const viralText = `子どものプリント管理、限界じゃない？😂\n写真を撮るだけでAIがカレンダーに自動登録＆提出物をリマインドしてくれる神アプリ見つけた！📸📆\nhttps://otayori-calendar-owfg.vercel.app`;
+                  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(viralText)}`;
+                  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(viralText)}`;
+                  return (
+                    <>
+                      <a href={twitterUrl} target="_blank" rel="noopener noreferrer" className="flex-1 bg-black text-white py-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-stone-800 transition shadow-sm">𝕏 ポスト</a>
+                      <a href={lineUrl} target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#06C755] text-white py-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-[#05b04a] transition shadow-sm">LINEで教える</a>
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <div className="space-y-2 border-t pt-4">
