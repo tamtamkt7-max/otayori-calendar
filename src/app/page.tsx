@@ -1014,17 +1014,12 @@ export default function Home() {
                     <div key={m.id} className="bg-stone-50 p-3 rounded-xl border border-stone-200 text-xs">
                       {isEditingThisRow ? (
                         <div className="space-y-2">
-                          {m.id === 'owner' && (
-                            <p className="text-[9px] text-amber-600 font-bold bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
-                              👑 グループオーナー：名前（パパ・ママなど）を自由に設定できます
-                            </p>
-                          )}
                           <div className="flex gap-2">
                             <input
                               type="text"
                               value={editingMemberName}
                               onChange={(e) => setEditingMemberName(e.target.value)}
-                              placeholder={m.id === 'owner' ? 'パパ、ママ、など自由に入力' : 'メンバー名'}
+                              placeholder="メンバー名"
                               className="flex-1 px-2 py-1 bg-white border rounded-lg font-bold"
                             />
                             <button type="button" onClick={() => handleSaveEditedMember(m.id)} className="bg-stone-800 text-white px-2.5 py-1 rounded-lg font-bold text-[11px]">保存</button>
@@ -1041,9 +1036,6 @@ export default function Home() {
                           <div className="flex items-center gap-2">
                             <span className={`w-3 h-3 rounded-full ${palette.circleClass}`}></span>
                             <span className="font-bold text-stone-700">{m.name}</span>
-                            {m.id === 'owner' && (
-                              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full">👑 オーナー</span>
-                            )}
                           </div>
                           <div className="flex gap-1.5">
                             <button type="button" onClick={() => { setEditingMemberId(m.id); setEditingMemberName(m.name); setEditingMemberColor(m.color || 'orange'); }} className="text-[10px] text-stone-500 bg-white border px-2 py-0.5 rounded-lg shadow-sm">編集</button>
