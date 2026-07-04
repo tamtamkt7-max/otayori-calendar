@@ -5,23 +5,64 @@ import { getFirebaseAdmin } from '../../../../lib/firebaseAdmin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
+/**
+ * グループ（家族）全員のFCMトークンを収集するヘルパー関数
+ * @param db Firestore インスタンス
+ * @param groupOwnerId グループオーナーの UID
+ * @returns 重複排除済みのFCMトークン配列
+ */
+async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<string[]> {
+  const allTokens = new Set<string>();
+
+  try {
+    // 1. グループオーナー自身のFCMトークンを取得
+    const ownerDoc = await db.collection('users').doc(groupOwnerId).get();
+    if (ownerDoc.exists) {
+      const ownerTokens: string[] = ownerDoc.data()?.fcmTokens || [];
+      ownerTokens.forEach((t) => allTokens.add(t));
+    }
+
+    // 2. このグループに所属する家族メンバー全員のFCMトークンを取得
+    // （users コレクションで groupId == groupOwnerId のドキュメントを検索）
+    const membersSnapshot = await db.collection('users')
+      .where('groupId', '==', groupOwnerId)
+      .get();
+
+    membersSnapshot.forEach((memberDoc: any) => {
+      const memberTokens: string[] = memberDoc.data()?.fcmTokens || [];
+      memberTokens.forEach((t) => allTokens.add(t));
+    });
+  } catch (err) {
+    console.warn(`[collectGroupFcmTokens] Failed to collect tokens for group ${groupOwnerId}:`, err);
+  }
+
+  return Array.from(allTokens);
+}
+
 export async function GET(req: Request) {
   try {
-    // 1. セキュリティ検証（CRON_SECRETのチェック）
+    // 1. セキュリティ検証（CRON_SECRETの厳格チェック）
     const authHeader = req.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
     const isDev = process.env.NODE_ENV === 'development';
 
-    // 開発環境かつSECRET未設定の場合は開発支援のため警告付きでバイパスを許可
-    if (!isDev && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn("Unauthorized attempt to access send-reminders API.");
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // 本番環境では CRON_SECRET が設定されていない場合も含め、不正アクセスを拒否する
+    // 開発環境（isDev）の場合のみシークレット未設定でも通過を許可
+    if (!isDev) {
+      if (!cronSecret) {
+        console.error('[send-reminders] CRON_SECRET is not set in production environment. Denying request.');
+        return NextResponse.json({ error: 'Server configuration error: CRON_SECRET not set.' }, { status: 500 });
+      }
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        console.warn('[send-reminders] Unauthorized attempt to access API.');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     const admin = await getFirebaseAdmin();
     const db = admin?.db;
     if (admin.error || !db) {
-      console.error("[send-reminders API] Firebase Admin is unavailable:", admin.error);
+      console.error('[send-reminders] Firebase Admin is unavailable:', admin.error);
       return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
@@ -46,27 +87,31 @@ export async function GET(req: Request) {
     for (const docSnapshot of remindersQuerySnapshot.docs) {
       const reminderId = docSnapshot.id;
       const reminderData = docSnapshot.data();
-      const { uid, title, body, eventId } = reminderData;
-      let fcmTokens: string[] = reminderData.fcmTokens || [];
+      const { uid, title, body, eventId, groupId: reminderGroupId } = reminderData;
 
-      // ユーザーの最新FCMトークンをデータベースから同期取得する (到達率向上のため)
-      try {
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          const latestTokens = userDoc.data()?.fcmTokens;
-          if (Array.isArray(latestTokens) && latestTokens.length > 0) {
-            fcmTokens = latestTokens;
+      // ユーザーのグループオーナーIDを解決する
+      let groupOwnerId: string = reminderGroupId || uid;
+
+      // groupId がリマインダーに未設定の場合は users/{uid} から動的取得（後方互換性）
+      if (!reminderGroupId) {
+        try {
+          const userDoc = await db.collection('users').doc(uid).get();
+          if (userDoc.exists) {
+            groupOwnerId = userDoc.data()?.groupId || uid;
           }
+        } catch (err) {
+          console.warn(`[send-reminders] Could not resolve groupId for user ${uid}:`, err);
         }
-      } catch (tokenSyncErr) {
-        console.warn(`Failed to sync latest FCM tokens for user ${uid}, fallback to recorded tokens:`, tokenSyncErr);
       }
+
+      // グループ全員のFCMトークンを収集（家族全員へのマルチキャスト）
+      const fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
 
       if (fcmTokens.length === 0) {
         // トークンが無い場合はスキップ扱いに更新
         await docSnapshot.ref.update({
           status: 'skipped',
-          skippedReason: 'No FCM tokens registered for user',
+          skippedReason: 'No FCM tokens registered for group',
           updatedAt: Timestamp.fromDate(new Date())
         });
         results.push({ reminderId, status: 'skipped', reason: 'No tokens' });
@@ -74,7 +119,7 @@ export async function GET(req: Request) {
       }
 
       try {
-        // FCMへ一括プッシュ送信 (sendEachForMulticast)
+        // FCMへ一括プッシュ送信 (sendEachForMulticast) - 家族全員のデバイスへ
         const response = await messaging.sendEachForMulticast({
           tokens: fcmTokens,
           notification: {
@@ -86,9 +131,9 @@ export async function GET(req: Request) {
               Urgency: 'high',
             },
             notification: {
-              icon: '/favicon.ico', // PWAアイコンの参照
+              icon: '/favicon.ico',
               badge: '/favicon.ico',
-              click_action: '/', // 通知タップ時にトップ画面へ
+              click_action: '/',
             },
           },
         });
@@ -102,7 +147,7 @@ export async function GET(req: Request) {
           if (!res.success && res.error) {
             const errCode = res.error.code;
             console.error(`FCM send error [token index ${idx}]:`, res.error);
-            
+
             // トークンが無効または未登録であるエラーコードの場合
             if (
               errCode === 'messaging/invalid-registration-token' ||
@@ -115,12 +160,31 @@ export async function GET(req: Request) {
         });
 
         // 4. 無効なFCMトークンがある場合はFirestoreのユーザー情報から削除 (クリーンアップ)
+        // グループオーナーと全メンバー両方から無効トークンを削除する
         if (tokensToRemove.length > 0) {
-          const userRef = db.collection('users').doc(uid);
-          await userRef.update({
+          const batch = db.batch();
+          // オーナーの無効トークンを削除
+          const ownerRef = db.collection('users').doc(groupOwnerId);
+          batch.update(ownerRef, {
             fcmTokens: FieldValue.arrayRemove(...tokensToRemove)
           });
-          console.log(`Cleaned up ${tokensToRemove.length} invalid FCM tokens for user ${uid}`);
+
+          // メンバーの無効トークンも削除
+          try {
+            const membersSnapshot = await db.collection('users')
+              .where('groupId', '==', groupOwnerId)
+              .get();
+            membersSnapshot.forEach((memberDoc: any) => {
+              batch.update(memberDoc.ref, {
+                fcmTokens: FieldValue.arrayRemove(...tokensToRemove)
+              });
+            });
+          } catch (cleanupErr) {
+            console.warn('[send-reminders] Failed to cleanup member tokens:', cleanupErr);
+          }
+
+          await batch.commit();
+          console.log(`Cleaned up ${tokensToRemove.length} invalid FCM tokens for group ${groupOwnerId}`);
         }
 
         // リマインダードキュメントのステータスを送信完了に更新
@@ -129,6 +193,7 @@ export async function GET(req: Request) {
           sentAt: Timestamp.fromDate(new Date()),
           successCount: response.successCount,
           failureCount: response.failureCount,
+          groupOwnerId: groupOwnerId,
           updatedAt: Timestamp.fromDate(new Date())
         });
 
@@ -136,15 +201,17 @@ export async function GET(req: Request) {
           reminderId,
           eventId,
           uid,
+          groupOwnerId,
           status: 'sent',
           successCount: response.successCount,
           failureCount: response.failureCount,
-          removedTokensCount: tokensToRemove.length
+          removedTokensCount: tokensToRemove.length,
+          totalRecipients: fcmTokens.length,
         });
 
       } catch (sendError: any) {
         console.error(`Critical error sending reminder ${reminderId}:`, sendError);
-        
+
         await docSnapshot.ref.update({
           status: 'failed',
           errorMessage: sendError.message || 'Unknown sending error',
@@ -170,7 +237,7 @@ export async function GET(req: Request) {
     });
 
   } catch (error: any) {
-    console.error("Cron send-reminders API error:", error);
+    console.error('Cron send-reminders API error:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
