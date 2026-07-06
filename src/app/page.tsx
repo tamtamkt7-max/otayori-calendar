@@ -1261,13 +1261,27 @@ export default function Home() {
                   onClick={() => {
                     const shareId = `${userStatus.groupId || user?.uid}_${editingEvent.id}`;
                     const shareUrl = `${window.location.origin}/share/${shareId}`;
+                    
+                    const formatShareDate = (dateStr: string) => {
+                      if (!dateStr) return "";
+                      try {
+                        const d = new Date(dateStr.replace(/-/g, '/'));
+                        const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+                        return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 (${weekdays[d.getDay()]})`;
+                      } catch (e) {
+                        return dateStr;
+                      }
+                    };
+
+                    const shareDate = formatShareDate(editingEvent.date);
+                    const message = `[予定] ${editingEvent.title || '無題'}\n[日時] ${shareDate}\n\n詳細とプリント画像はこちら👇\n${shareUrl}`;
+                    const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(message)}`;
+
                     navigator.clipboard.writeText(shareUrl).then(() => {
                       alert("共有リンクをクリップボードにコピーしました！LINEで共有します。");
-                      const lineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
                       window.open(lineUrl, '_blank');
                     }).catch(err => {
                       console.error("Copy failed:", err);
-                      const lineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
                       window.open(lineUrl, '_blank');
                     });
                   }}

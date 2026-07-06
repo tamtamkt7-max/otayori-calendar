@@ -1,8 +1,66 @@
 import { getFirebaseAdmin } from "@/lib/firebaseAdmin";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  if (!id || !id.includes("_")) {
+    return {
+      title: "無効な共有リンク | おたよりカレンダー",
+      description: "共有リンクが無効です。",
+    };
+  }
+
+  const [groupId, eventId] = id.split("_");
+  const admin = await getFirebaseAdmin();
+  const db = admin?.db;
+
+  if (admin.error || !db) {
+    return {
+      title: "共有予定 | おたよりカレンダー",
+      description: "予定情報を読み取れませんでした。",
+    };
+  }
+
+  try {
+    const docRef = db.collection("groups").doc(groupId).collection("events").doc(eventId);
+    const snap = await docRef.get();
+    if (snap.exists) {
+      const eventData = snap.data();
+      if (eventData) {
+        const formattedDate = getJapaneseDateString(eventData.date);
+        const title = `【共有予定】${eventData.title || "おたより"}`;
+        const description = `[日付] ${formattedDate}\n[詳細] ${eventData.details || eventData.memo || "おたよりカレンダーで共有された予定です。"}`;
+        return {
+          title,
+          description,
+          openGraph: {
+            title,
+            description,
+            images: eventData.imageUrl ? [{ url: eventData.imageUrl }] : [],
+            type: "website",
+          },
+          twitter: {
+            card: "summary_large_image",
+            title,
+            description,
+            images: eventData.imageUrl ? [eventData.imageUrl] : [],
+          }
+        };
+      }
+    }
+  } catch (err) {
+    console.error("Metadata generation error:", err);
+  }
+
+  return {
+    title: "共有された予定 | おたよりカレンダー",
+    description: "おたよりカレンダーで共有された予定の詳細です。",
+  };
 }
 
 const getJapaneseDateString = (dateStr: string) => {
