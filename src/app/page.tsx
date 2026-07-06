@@ -778,6 +778,18 @@ export default function Home() {
             })()}
           </div>
         </div>
+
+        {/* フッター */}
+        <footer className="w-full text-center py-6 text-[10px] text-stone-400 mt-10 border-t border-stone-200/40 space-x-3">
+          <Link href="/about" className="hover:underline font-bold">運営者情報</Link>
+          <span className="text-stone-300">|</span>
+          <Link href="/contact" className="hover:underline font-bold">お問い合わせ</Link>
+          <span className="text-stone-300">|</span>
+          <Link href="/terms" className="hover:underline font-bold">利用規約</Link>
+          <span className="text-stone-300">|</span>
+          <Link href="/privacy" className="hover:underline font-bold">プライバシーポリシー</Link>
+          <p className="mt-2 text-stone-300">&copy; {new Date().getFullYear()} おたよりカレンダー</p>
+        </footer>
       </div>
     );
   }
@@ -1342,6 +1354,18 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* フッター */}
+      <footer className="w-full text-center py-6 text-[10px] text-stone-400 mt-12 border-t border-stone-200/40 space-x-3">
+        <Link href="/about" className="hover:underline font-bold">運営者情報</Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/contact" className="hover:underline font-bold">お問い合わせ</Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/terms" className="hover:underline font-bold">利用規約</Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/privacy" className="hover:underline font-bold">プライバシーポリシー</Link>
+        <p className="mt-2 text-stone-300">&copy; {new Date().getFullYear()} おたよりカレンダー</p>
+      </footer>
     </div>
   );
 }

@@ -68,8 +68,27 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="font-bold text-stone-800 border-l-4 border-orange-300 pl-3 mb-2 text-base">第6条（お問い合わせ窓口）</h2>
-            <p>個人情報に関するお問い合わせは，本アプリ運営までお問い合わせフォームまたは登録メールアドレス経由でご連絡ください。</p>
+            <h2 className="font-bold text-stone-800 border-l-4 border-orange-300 pl-3 mb-2 text-base">第6条（広告の配信およびCookieについて）</h2>
+            <p className="mb-2">
+              当サイトでは，第三者配信事業者（Googleなど）による広告配信サービス「Google AdSense」を利用しています。
+            </p>
+            <p className="mb-2">
+              広告配信事業者は，ユーザーの興味に応じた広告を表示するためにCookie（クッキー）を使用することがあります。これによって，ユーザーが当サイトや他のサイトに過去にアクセスした際の情報に基づいて，適切な広告を配信することが可能になります。
+            </p>
+            <p>
+              ユーザーは，Googleの広告設定（<a href="https://adssettings.google.com/authenticated" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline font-bold">広告設定</a>）からパーソナライズ広告を無効にすることができます。また，<a href="https://www.aboutads.info/choices" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline font-bold">www.aboutads.info</a> にアクセスすることで，第三者配信事業者のCookieを無効にすることも可能です。
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-bold text-stone-800 border-l-4 border-orange-300 pl-3 mb-2 text-base">第7条（お問い合わせ窓口）</h2>
+            <p>
+              個人情報に関するお問い合わせは，当アプリの
+              <Link href="/contact" className="text-orange-400 hover:underline font-bold mx-1">
+                お問い合わせフォーム
+              </Link>
+              までご連絡ください。
+            </p>
           </section>
         </div>
 

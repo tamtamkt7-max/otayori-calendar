@@ -56,7 +56,7 @@ export default function RootLayout({
 }>) {
   const adsenseClientId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
   const gaId = process.env.NEXT_PUBLIC_GA_ID;
-  const isProd = process.env.NODE_ENV === 'production';
+  const isDev = process.env.NODE_ENV === 'development';
 
   return (
     <html
@@ -64,7 +64,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {isProd && adsenseClientId && (
+        {!isDev && adsenseClientId && (
           <Script
             async
             src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`}
