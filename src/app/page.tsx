@@ -101,6 +101,11 @@ export default function Home() {
   const [isScanConfirmModalOpen, setIsScanConfirmModalOpen] = useState(false);
   const [newScannedEvents, setNewScannedEvents] = useState<any[]>([]);
   const [isEventsLoading, setIsEventsLoading] = useState(true);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
+  const [onboardingMembers, setOnboardingMembers] = useState<{ name: string; color: MemberColor }[]>([
+    { name: '', color: 'orange' }
+  ]);
+  const [selectedScanMemberId, setSelectedScanMemberId] = useState<string>('all');
 
   const {
     permissionStatus,
@@ -213,8 +218,9 @@ export default function Home() {
         groupOwnerPlan = ownerData.plan || 'free';
       }
       if (groupMembers.length === 0) {
-        groupMembers = [{ id: 'owner', name: 'パパ', color: 'orange' }];
-        await setDoc(doc(db, 'users', currentGroupId), { members: groupMembers }, { merge: true });
+        if (currentGroupId === user.uid) {
+          setIsOnboardingModalOpen(true);
+        }
       }
       setMembers(groupMembers);
 
@@ -519,6 +525,72 @@ export default function Home() {
     }
   };
 
+  const handleSaveOnboarding = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    const validMembers = onboardingMembers.filter(m => m.name.trim() !== '');
+    if (validMembers.length === 0) {
+      alert("少なくとも1人のメンバー名を入力してください。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+      let currentGroupId = user.uid;
+      if (userDocSnap.exists()) {
+        currentGroupId = userDocSnap.data().groupId || user.uid;
+      }
+
+      const dbMembers = validMembers.map((m, index) => ({
+        id: index === 0 ? 'owner' : `member-${Date.now()}-${index}`,
+        name: m.name.trim(),
+        color: m.color
+      }));
+
+      await setDoc(doc(db, 'users', currentGroupId), {
+        members: dbMembers,
+        isOnboardingCompleted: true
+      }, { merge: true });
+
+      if (currentGroupId !== user.uid) {
+        await setDoc(doc(db, 'users', user.uid), {
+          isOnboardingCompleted: true
+        }, { merge: true });
+      }
+
+      setIsOnboardingModalOpen(false);
+      alert("メンバー設定が完了しました！✨ カレンダーをご利用いただけます。");
+      await refetchEvents();
+    } catch (err) {
+      console.error(err);
+      alert("メンバー情報の保存に失敗しました。再度お試しください💦");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addOnboardingMemberField = () => {
+    const colors: MemberColor[] = ['blue', 'red', 'green', 'yellow', 'purple', 'pink', 'gray'];
+    const nextColor = colors[onboardingMembers.length % colors.length];
+    setOnboardingMembers(prev => [...prev, { name: '', color: nextColor }]);
+  };
+
+  const removeOnboardingMemberField = (index: number) => {
+    if (index === 0) return;
+    setOnboardingMembers(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateOnboardingMember = (index: number, field: 'name' | 'color', value: any) => {
+    setOnboardingMembers(prev => prev.map((m, i) => {
+      if (i === index) {
+        return { ...m, [field]: value };
+      }
+      return m;
+    }));
+  };
+
   const handleUpgrade = async () => {
     try {
       setLoading(true);
@@ -617,7 +689,7 @@ export default function Home() {
       const response = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images: base64Images, userId: user?.uid }),
+        body: JSON.stringify({ images: base64Images, userId: user?.uid, targetMemberId: selectedScanMemberId }),
       });
       const data = await response.json();
       if (response.ok) {
@@ -1040,8 +1112,41 @@ export default function Home() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-3xl shadow-sm border border-stone-100 p-5 text-center">
-            <label onClick={(e) => { if (isReadOnly) { e.preventDefault(); alert("閲覧専用です"); } }} className="w-full py-7 bg-orange-200 text-orange-900 rounded-3xl font-black text-base flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-300 transition">
+          <div className="bg-white rounded-3xl shadow-sm border border-stone-100 p-5 text-center space-y-4">
+            {/* スキャン対象者選択UI */}
+            <div className="text-left space-y-1.5">
+              <label className="text-[10px] font-bold text-stone-400 block">👤 誰のおたよりをスキャンしますか？</label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedScanMemberId('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                    selectedScanMemberId === 'all'
+                      ? 'bg-orange-400 text-white border-transparent'
+                      : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                  }`}
+                >
+                  🤖 自動判定
+                </button>
+                {members.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedScanMemberId(m.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                      selectedScanMemberId === m.id
+                        ? 'bg-orange-400 text-white border-transparent'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${COLOR_PALETTE.find(p => p.id === m.color)?.circleClass || 'bg-orange-400'}`} />
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label onClick={(e) => { if (isReadOnly) { e.preventDefault(); alert("閲覧専用です"); } }} className="w-full py-7 bg-orange-200 text-orange-900 rounded-3xl font-black text-base flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-300 transition block">
               <span className="text-3xl">📷</span><p className="text-sm font-bold">プリントを撮る</p>
               <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading || isReadOnly} multiple />
             </label>
@@ -1456,6 +1561,77 @@ export default function Home() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {isOnboardingModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md">
+          <form onSubmit={handleSaveOnboarding} className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="text-center space-y-2">
+              <span className="text-4xl block">👪</span>
+              <h3 className="text-lg font-black text-stone-800">カレンダーをはじめよう！</h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                カレンダーを利用する家族のメンバーを設定しましょう。<br />予定をスキャンする際、自動でメンバーごとに色分けされます。
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {onboardingMembers.map((m, idx) => (
+                <div key={idx} className="bg-white p-4 rounded-2xl border border-stone-150 space-y-3 relative shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-stone-400 block">
+                      {idx === 0 ? "👤 あなたの名前（メインユーザー）" : `👪 家族メンバー ${idx + 1}`}
+                    </span>
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => removeOnboardingMemberField(idx)}
+                        className="text-[10px] text-rose-500 hover:underline font-bold"
+                      >
+                        削除
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder={idx === 0 ? "例：パパ、ママ、ご自身の名前" : "例：たろう、はなこ"}
+                      required
+                      value={m.name}
+                      onChange={(e) => updateOnboardingMember(idx, 'name', e.target.value)}
+                      className="flex-1 px-3 py-2 bg-stone-50 border rounded-xl text-xs font-bold focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap p-1 bg-stone-50 rounded-xl">
+                    {COLOR_PALETTE.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => updateOnboardingMember(idx, 'color', p.id)}
+                        className={`w-5 h-5 rounded-full ${p.circleClass} ${m.color === p.id ? 'ring-2 ring-stone-700' : 'opacity-60'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addOnboardingMemberField}
+              className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1 border border-stone-200"
+            >
+              ＋ 家族のメンバーを追加する
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-orange-400 text-white font-extrabold text-xs rounded-xl shadow-md hover:bg-orange-500 transition disabled:opacity-50"
+            >
+              {loading ? '保存中...' : 'メンバーを設定してスタート！'}
+            </button>
+          </form>
         </div>
       )}
 
