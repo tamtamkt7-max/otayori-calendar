@@ -771,10 +771,17 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-[#FDFBF9] flex flex-col items-center justify-center font-sans text-stone-700 p-4 py-10">
         <div className="w-20 h-20 bg-orange-200 rounded-full flex items-center justify-center text-orange-700 font-bold text-4xl mb-6 shadow-sm">お</div>
-        <h1 className="text-2xl font-extrabold text-stone-800 mb-2">おたよりカレンダー</h1>
-        <p className="text-sm text-stone-500 mb-8 text-center max-w-xs leading-relaxed">
-          園や学校のプリントをパシャッと撮るだけ。<br />AIが予定を自動でカレンダーに登録します。
-        </p>
+        <h1 className="text-2xl font-extrabold text-stone-800 mb-2 text-center">おたよりカレンダー</h1>
+        <div className="text-center max-w-xs mb-8 space-y-2">
+          <p className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-full inline-block">
+            👪 冷蔵庫プリントのごちゃごちゃを今すぐ解決！
+          </p>
+          <p className="text-sm text-stone-500 leading-relaxed">
+            園や学校、幼稚園のプリントをスマホでパシャッと撮るだけの「プリント整理アプリ」です。<br />
+            AIが予定や持ち物を自動解析してカレンダーへ登録！<br />
+            共働きのご家庭のスケジュール共有や、提出期限の忘れ防止に大活躍します。
+          </p>
+        </div>
 
         <div className="w-full max-w-sm bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
           <div className="flex border-b border-stone-100 mb-6">
@@ -1247,6 +1254,30 @@ export default function Home() {
               )}
             </div>
 
+            {editingEvent.id && (
+              <div className="pt-2 border-t border-stone-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shareId = `${userStatus.groupId || user?.uid}_${editingEvent.id}`;
+                    const shareUrl = `${window.location.origin}/share/${shareId}`;
+                    navigator.clipboard.writeText(shareUrl).then(() => {
+                      alert("共有リンクをクリップボードにコピーしました！LINEで共有します。");
+                      const lineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
+                      window.open(lineUrl, '_blank');
+                    }).catch(err => {
+                      console.error("Copy failed:", err);
+                      const lineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
+                      window.open(lineUrl, '_blank');
+                    });
+                  }}
+                  className="w-full py-2.5 bg-[#06C755] hover:bg-[#05b34c] text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <span>💬</span> LINEで予定を共有する
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               <button type="submit" disabled={loading} className="flex-1 bg-orange-400 text-white font-bold py-3 rounded-xl text-xs shadow-sm disabled:opacity-50">
                 {loading ? '保存中...' : '保存する'}
@@ -1404,7 +1435,7 @@ export default function Home() {
                     { id: 'standard', name: 'スタンダード', isPremium: false, bgHex: '#FDFBF9', textHex: '#2d2d2d' },
                     { id: 'dark', name: 'ダーク', isPremium: false, bgHex: '#121212', textHex: '#e2e8f0' },
                     { id: 'cat', name: '🐈 キャット', isPremium: true, bgHex: '#FAF6F0', textHex: '#C27664' },
-                    { id: 'picture-book', name: '🎨 絵本パステル', isPremium: true, bgHex: '#FFFDF4', textHex: '#FF9A9E' },
+                    { id: 'picture-book', name: '🎨 絵本パステル', isPremium: true, bgHex: '#FFFDF0', textHex: '#1E293B' },
                     { id: 'botanical', name: '🌿 ボタニカル', isPremium: true, bgHex: '#F4F9F4', textHex: '#5F8575' },
                     { id: 'cyber', name: '🌌 サイバー', isPremium: true, bgHex: '#0A0D14', textHex: '#00F2FE' },
                   ].map(t => {

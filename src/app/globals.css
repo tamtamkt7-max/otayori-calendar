@@ -86,18 +86,18 @@ body {
    -------------------------------------------------------------------------- */
 [data-theme="cat"] {
   --background: #FAF6F0;
-  --foreground: #4F46E5;
+  --foreground: #524A40;
 }
 [data-theme="cat"] body,
-[data-theme="cat"] .bg-\[\#FDFBF9\] {
+[data-theme="cat"] .bg-\[\#FDFBF9\],
+[data-theme="cat"] .bg-stone-50 {
   background-color: #FAF6F0 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='%23524A40' fill-opacity='0.05'%3E%3Cpath d='M30,32C24,32 20,38 20,43C20,48 24,52 30,52C36,52 40,48 40,43C40,38 36,32 30,32Z'/%3E%3Ccircle cx='18' cy='26' r='5'/%3E%3Ccircle cx='26' cy='20' r='5.5'/%3E%3Ccircle cx='34' cy='20' r='5.5'/%3E%3Ccircle cx='42' cy='26' r='5'/%3E%3C/g%3E%3C/svg%3E") !important;
+  background-size: 60px 60px !important;
   color: #524A40 !important;
 }
 [data-theme="cat"] .bg-white {
   background-color: #F4EAE0 !important; /* 温かみのあるアイボリー */
-}
-[data-theme="cat"] .bg-stone-50 {
-  background-color: #EAE3D2 !important;
 }
 [data-theme="cat"] .text-stone-700,
 [data-theme="cat"] .text-stone-600,
@@ -128,50 +128,112 @@ body {
   border-radius: 1.5rem !important; /* 丸みを強化 */
 }
 
+/* 遊び心のある猫耳・肉球ホバーアニメーション */
+[data-theme="cat"] button,
+[data-theme="cat"] a {
+  position: relative;
+}
+[data-theme="cat"] button::after,
+[data-theme="cat"] a::after {
+  content: "🐾";
+  position: absolute;
+  font-size: 14px;
+  right: 6px;
+  bottom: -6px;
+  opacity: 0;
+  transform: translateY(5px) rotate(-20deg);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+  z-index: 10;
+}
+[data-theme="cat"] button:hover::after,
+[data-theme="cat"] a:hover::after {
+  opacity: 1;
+  transform: translateY(-2px) rotate(15deg);
+}
+
 /* --------------------------------------------------------------------------
-   3. picture-book (パステル調・子ども向け絵本風の丸っこいUI)
+   3. picture-book (パステルポップ・ネオブルータリズム風絵本テーマ)
    -------------------------------------------------------------------------- */
 [data-theme="picture-book"] {
-  --background: #FFFDF4;
-  --foreground: #6D4C41;
+  --background: #FFFDF0;
+  --foreground: #1E293B;
 }
 [data-theme="picture-book"] body,
 [data-theme="picture-book"] .bg-\[\#FDFBF9\],
 [data-theme="picture-book"] .bg-stone-50 {
-  background-color: #FFFDF4 !important;
-  color: #6D4C41 !important;
+  background-color: #FFFDF0 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='10' fill='%23A7F3D0' fill-opacity='0.25'/%3E%3C/svg%3E") !important; /* 大きなミントグリーンの水玉 */
+  background-size: 80px 80px !important;
+  color: #1E293B !important;
 }
 [data-theme="picture-book"] .bg-white {
-  background-color: #FFFDF4 !important;
-  border: 3px solid #FFECB3 !important; /* 手書きのような境界線 */
+  background-color: #FFFFFF !important;
+  border: 4px solid #1E293B !important;
+  box-shadow: 4px 4px 0px 0px #1E293B !important;
 }
 [data-theme="picture-book"] .text-stone-700,
 [data-theme="picture-book"] .text-stone-600,
-[data-theme="picture-book"] .text-stone-800 {
-  color: #6D4C41 !important;
+[data-theme="picture-book"] .text-stone-850,
+[data-theme="picture-book"] .text-stone-800,
+[data-theme="picture-book"] .text-stone-500 {
+  color: #1E293B !important;
+}
+[data-theme="picture-book"] .text-stone-400 {
+  color: #64748B !important;
 }
 [data-theme="picture-book"] .border,
 [data-theme="picture-book"] .border-stone-100,
 [data-theme="picture-book"] .border-stone-150,
-[data-theme="picture-book"] .border-stone-200 {
-  border-color: #FFECB3 !important;
+[data-theme="picture-book"] .border-stone-200,
+[data-theme="picture-book"] .border-orange-100 {
+  border: 4px solid #1E293B !important;
 }
 [data-theme="picture-book"] .bg-orange-400 {
-  background-color: #FF9A9E !important; /* 優しいピンク */
-  border-radius: 2rem !important;
-  border: 2px solid #FFECB3 !important;
+  background-color: #A7F3D0 !important; /* ミントグリーン */
+  color: #1E293B !important;
+  border: 4px solid #1E293B !important;
+  box-shadow: 4px 4px 0px 0px #1E293B !important;
+  border-radius: 8px !important;
+  font-weight: 800 !important;
+}
+[data-theme="picture-book"] .bg-orange-400:hover {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 6px 6px 0px 0px #1E293B !important;
 }
 [data-theme="picture-book"] .bg-orange-200 {
-  background-color: #E0F7FA !important;
-  color: #00838F !important;
-  border-radius: 1.5rem !important;
+  background-color: #FDE68A !important; /* パステルイエロー */
+  color: #1E293B !important;
+  border: 4px solid #1E293B !important;
+  box-shadow: 2px 2px 0px 0px #1E293B !important;
+  border-radius: 8px !important;
+}
+[data-theme="picture-book"] .bg-orange-50,
+[data-theme="picture-book"] .bg-orange-50\/50,
+[data-theme="picture-book"] .bg-orange-50\/40 {
+  background-color: #FFFDE0 !important;
+  border: 4px solid #1E293B !important;
 }
 [data-theme="picture-book"] .rounded-xl,
 [data-theme="picture-book"] .rounded-2xl,
 [data-theme="picture-book"] .rounded-3xl,
 [data-theme="picture-book"] button,
+[data-theme="picture-book"] form,
 [data-theme="picture-book"] div[role="dialog"] {
-  border-radius: 2.25rem !important; /* 圧倒的角丸 */
+  border-radius: 12px !important;
+  border: 4px solid #1E293B !important;
+  box-shadow: 4px 4px 0px 0px #1E293B !important;
+}
+[data-theme="picture-book"] select,
+[data-theme="picture-book"] input,
+[data-theme="picture-book"] textarea {
+  background-color: #FFFFFF !important;
+  color: #1E293B !important;
+  border: 4px solid #1E293B !important;
+  border-radius: 8px !important;
+}
+[data-theme="picture-book"] .bg-stone-50 {
+  background-color: #FFFDF0 !important;
 }
 
 /* --------------------------------------------------------------------------
