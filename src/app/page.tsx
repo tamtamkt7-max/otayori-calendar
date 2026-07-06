@@ -60,6 +60,7 @@ export default function Home() {
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [joinInviteCode, setJoinInviteCode] = useState('');
 
   // --- カレンダー関連のState ---
   const today = new Date();
@@ -447,6 +448,67 @@ export default function Home() {
     }
   };
 
+  const handleJoinGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !joinInviteCode.trim()) return;
+
+    setLoading(true);
+    try {
+      const targetCode = joinInviteCode.trim().toUpperCase();
+
+      // 1. 自分自身の招待コードと同じ場合はエラー
+      if (targetCode === userStatus.inviteCode) {
+        alert("自分自身の招待コードは使用できません💦");
+        setLoading(false);
+        return;
+      }
+
+      // 2. 招待コードに一致するユーザーを検索
+      const q = query(collection(db, 'users'), where('inviteCode', '==', targetCode));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        alert("無効な招待コードです。入力内容をご確認ください😢");
+        setLoading(false);
+        return;
+      }
+
+      const partnerDoc = snap.docs[0];
+      const partnerData = partnerDoc.data();
+      const targetGroupId = partnerData.groupId || partnerDoc.id;
+
+      // 3. 自分の groupId を更新
+      await setDoc(doc(db, 'users', user.uid), { groupId: targetGroupId }, { merge: true });
+
+      // 4. 元々持っていた孤立した空の初期グループデータ（旧 groupId = user.uid のイベントデータ）をクリーンアップ
+      // ※ もし自分がすでにそのグループの所有者であり、かつ別のグループへ移行する場合、旧グループのイベントデータを削除する
+      if (userStatus.groupId === user.uid && targetGroupId !== user.uid) {
+        try {
+          const oldEventsSnap = await getDocs(collection(db, `groups/${user.uid}/events`));
+          const batch = writeBatch(db);
+          oldEventsSnap.forEach((doc) => {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
+          console.log(`[handleJoinGroup] Cleaned up ${oldEventsSnap.size} events from old group ${user.uid}`);
+        } catch (cleanErr) {
+          console.error("[handleJoinGroup] Failed to clean up old events:", cleanErr);
+        }
+      }
+
+      alert("家族のグループに参加しました！🎉");
+      setJoinInviteCode('');
+      setIsSettingModalOpen(false);
+
+      // 最新のグループデータとカレンダーを再取得
+      await refetchEvents();
+    } catch (err: any) {
+      console.error(err);
+      alert("家族グループへの参加に失敗しました。時間をおいて再度お試しください💦");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleUpgrade = async () => {
     try {
@@ -1193,6 +1255,40 @@ export default function Home() {
                     {COLOR_PALETTE.map(p => <button key={p.id} type="button" onClick={() => setNewMemberColor(p.id)} className={`w-6 h-6 rounded-full ${p.circleClass} ${newMemberColor === p.id ? 'ring-2 ring-stone-700' : 'opacity-60'}`} />)}
                   </div>
                   <button type="submit" className="w-full py-2 bg-orange-400 text-white font-extrabold text-xs rounded-xl">新しいメンバーを追加する</button>
+                </form>
+              )}
+            </div>
+
+            {/* 家族グループに合流（上書き同期） */}
+            <div className="space-y-2 border-t pt-4">
+              <h4 className="text-xs font-black text-stone-700">👪 家族のグループに参加する</h4>
+              {userStatus.groupId !== user?.uid ? (
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3 text-center">
+                  <p className="text-xs font-bold text-stone-600">現在、家族の共有グループに参加中です ✨</p>
+                  <p className="text-[10px] text-stone-400 mt-0.5">※別のグループに再度参加し直す場合は、管理者にお問い合わせください。</p>
+                </div>
+              ) : (
+                <form onSubmit={handleJoinGroup} className="space-y-2">
+                  <p className="text-[10px] text-stone-400 leading-relaxed">
+                    すでに「おたよりカレンダー」を利用している家族のグループに合流し、カレンダーを同期共有します。
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="家族の招待コードを入力"
+                      required
+                      value={joinInviteCode}
+                      onChange={(e) => setJoinInviteCode(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-stone-50 border rounded-xl text-xs font-bold uppercase focus:outline-none focus:border-orange-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={loading || !joinInviteCode.trim()}
+                      className="px-4 bg-orange-400 text-white font-extrabold text-xs rounded-xl shadow-sm hover:bg-orange-500 transition disabled:opacity-50"
+                    >
+                      {loading ? '参加中...' : '参加する'}
+                    </button>
+                  </div>
                 </form>
               )}
             </div>
