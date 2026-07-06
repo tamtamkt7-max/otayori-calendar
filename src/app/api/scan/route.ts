@@ -35,9 +35,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { image, userId } = body;
+    const { image, images, userId } = body;
 
-    if (!image) {
+    const base64Images: string[] = images || (image ? [image] : []);
+
+    if (base64Images.length === 0) {
       return NextResponse.json({ error: '画像がありません' }, { status: 400 });
     }
 
@@ -53,7 +55,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
-    // セキュリティ対策: レートリミット（1分間に最大5回、1日に最大30回）
+    // セキュリティ対策: レートリミット（1分間に最大15回、1日に最大100回）
     const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
     const rateLimitKey = userId || clientIp;
 
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
       db: firestore,
       key: rateLimitKey,
       actionName: 'scan_minute',
-      limit: 5,
+      limit: 15,
       windowMs: 60000
     });
 
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
       db: firestore,
       key: rateLimitKey,
       actionName: 'scan_day',
-      limit: 30,
+      limit: 100,
       windowMs: 86400000
     });
 
@@ -104,92 +106,15 @@ export async function POST(req: Request) {
     }
 
     const activeScanCount = lastScanMonth === currentMonthStr ? scanCount : 0;
+    const incomingCount = base64Images.length;
 
-    if (plan !== 'premium' && activeScanCount >= 10) {
+    if (plan !== 'premium' && activeScanCount + incomingCount > 10) {
       return NextResponse.json({
-        error: '今月の無料スキャン上限（10回）に達しました😢'
+        error: `今月の無料スキャン上限（残り ${Math.max(0, 10 - activeScanCount)}枚）を超えています😢`
       }, { status: 403 });
     }
 
-    const mimeTypeMatch = image.match(/data:(.*?);base64,/);
-    const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
-
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedMimeTypes.includes(mimeType)) {
-      return NextResponse.json({ error: '許可されていないファイル形式です。画像（JPEG/PNG/WEBP/GIF）のみアップロード可能です。' }, { status: 400 });
-    }
-
-    const base64Data = image.includes(',') ? image.split(',')[1] : image;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const MAX_SIZE = 10 * 1024 * 1024;
-    if (buffer.length > MAX_SIZE) {
-      return NextResponse.json({ error: 'ファイルサイズが大きすぎます。10MB以下の画像を指定してください。' }, { status: 400 });
-    }
-
-    let imageUrl: string | null = null;
-    try {
-      const { getStorage } = await import('firebase-admin/storage');
-      const storage = getStorage();
-      const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-      if (!bucketName) {
-        throw new Error("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is not set");
-      }
-      const bucket = storage.bucket(bucketName);
-      const filename = `users/${userId}/letters/${Date.now()}.jpg`;
-      const file = bucket.file(filename);
-
-      const downloadToken = crypto.randomUUID();
-      await file.save(buffer, {
-        metadata: {
-          contentType: mimeType,
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken
-          }
-        }
-      });
-
-      imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filename)}?alt=media&token=${downloadToken}`;
-    } catch (storageError) {
-      console.error("Firebase Storage upload error:", storageError);
-    }
-
-    // Gemini 3.5 Flash を呼び出し
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-
-    const prompt = `
-    あなたは優秀な学校・園の予定管理アシスタントです。
-    与えられた「おたより」の画像から、行事・イベントの予定を漏れなく全て抽出してください。
-    画像内の上部やヘッダーにあるタイトル情報（例：「7月スケジュール」「2026年」など）を注意深く読み取り、何年何月の予定であるかを正しく特定した上で、各マスのイベントの日付を確定させてください。
-    
-    以下のJSON配列フォーマットに完全に準拠して出力してください。Markdown（\`\`\`json 等）は不要です。
-    [
-      {
-        "title": "行事名",
-        "date": "YYYY-MM-DD",
-        "details": "持ち物や詳細",
-        "category": "school または event または medical"
-      }
-    ]
-    `;
-
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: base64Data, mimeType: mimeType } }
-    ]);
-
-    const text = result.response.text();
-    const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    let events = [];
-    try {
-      events = JSON.parse(jsonStr);
-    } catch (jsonError: any) {
-      console.error("Gemini output JSON parse error:", jsonError, "Raw output:", text);
-      return NextResponse.json({ error: "おたよりの解析データが正しいフォーマットではありませんでした。もう一度スキャンし直してください。" }, { status: 500 });
-    }
-
     const currentGroupId = userGroupId;
-
     const groupOwnerSnap = await firestore.collection('users').doc(currentGroupId).get();
     let groupMembers: any[] = [];
     if (groupOwnerSnap.exists) {
@@ -199,7 +124,6 @@ export async function POST(req: Request) {
       groupMembers = [{ id: 'owner', name: '共通', color: 'orange' }];
     }
 
-    const { Timestamp } = await import('firebase-admin/firestore');
     const batch = firestore.batch();
     const processedEvents: any[] = [];
 
@@ -229,127 +153,146 @@ export async function POST(req: Request) {
       return currentMonthStr + '-01';
     };
 
-    const getJstDate19 = (dateStr: string, daysOffset: number): Date => {
-      const [yearStr, monthStr, dayStr] = dateStr.split('-');
-      const y = parseInt(yearStr, 10);
-      const m = parseInt(monthStr, 10) - 1;
-      const d = parseInt(dayStr, 10) - daysOffset;
-      return new Date(Date.UTC(y, m, d, 10, 0, 0));
-    };
+    // 各画像について処理
+    for (let imgIdx = 0; imgIdx < base64Images.length; imgIdx++) {
+      const currentImage = base64Images[imgIdx];
+      const mimeTypeMatch = currentImage.match(/data:(.*?);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
 
-    // グループ（家族）全員のFCMトークンを収集
-    const fcmTokens = await collectGroupFcmTokens(firestore, currentGroupId);
-
-    for (let idx = 0; idx < events.length; idx++) {
-      const ev = events[idx];
-      const eventId = `ai-scan-${Date.now()}-${idx}`;
-      const titleText = (ev.title || '').trim();
-      const detailsText = (ev.details || '').trim();
-
-      const cleanTitle = titleText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const cleanDetails = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-      let matchedMember = groupMembers.find(m =>
-        (m.name && (cleanTitle.includes(m.name) || cleanDetails.includes(m.name)))
-      );
-
-      if (!matchedMember) {
-        matchedMember = groupMembers.find(m => {
-          const name = m.name || '';
-          if (name.includes('パパ') && (cleanTitle.includes('パパ') || cleanDetails.includes('パパ') || cleanTitle.includes('父') || cleanDetails.includes('父'))) return true;
-          if (name.includes('ママ') && (cleanTitle.includes('ママ') || cleanDetails.includes('ママ') || cleanTitle.includes('母') || cleanDetails.includes('母'))) return true;
-          if (name.includes('子') && (cleanTitle.includes('子') || cleanDetails.includes('子') || cleanTitle.includes('園児') || cleanDetails.includes('児童'))) return true;
-          return false;
-        });
+      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedMimeTypes.includes(mimeType)) {
+        return NextResponse.json({ error: '許可されていないファイル形式です。画像（JPEG/PNG/WEBP/GIF）のみアップロード可能です。' }, { status: 400 });
       }
 
-      const finalMember = matchedMember || groupMembers[0];
+      const base64Data = currentImage.includes(',') ? currentImage.split(',')[1] : currentImage;
+      const buffer = Buffer.from(base64Data, 'base64');
 
-      const eventData = {
-        id: eventId,
-        title: cleanTitle || '無題の予定',
-        date: normalizeDate(ev.date),
-        details: cleanDetails,
-        category: ev.category || 'school',
-        color: (finalMember && finalMember.color) ? finalMember.color : 'orange',
-        memberId: (finalMember && finalMember.id) ? finalMember.id : 'owner',
-        imageUrl: imageUrl,
-        remindThreeDays: true,
-        remindOneDay: true,
-        remindCustom: false,
-        customRemindAt: null,
-        pendingReview: true, // プレミアムの未処理アラート機能用：ユーザーが確認するまで true のまま
-        updatedAt: new Date().toISOString()
-      };
+      const MAX_SIZE = 10 * 1024 * 1024;
+      if (buffer.length > MAX_SIZE) {
+        return NextResponse.json({ error: 'ファイルサイズが大きすぎます。10MB以下の画像を指定してください。' }, { status: 400 });
+      }
 
-      processedEvents.push(eventData);
+      let imageUrl: string | null = null;
+      try {
+        const { getStorage } = await import('firebase-admin/storage');
+        const storage = getStorage();
+        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+        if (!bucketName) {
+          throw new Error("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is not set");
+        }
+        const bucket = storage.bucket(bucketName);
+        const filename = `users/${userId}/letters/${Date.now()}-${imgIdx}.jpg`;
+        const file = bucket.file(filename);
 
-      const evRef = firestore.collection('groups').doc(currentGroupId).collection('events').doc(eventId);
-      batch.set(evRef, eventData, { merge: true });
+        const downloadToken = crypto.randomUUID();
+        await file.save(buffer, {
+          metadata: {
+            contentType: mimeType,
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken
+            }
+          }
+        });
 
-      const remindersRef = firestore.collection('reminders');
-      const nowTime = new Date();
+        imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(filename)}?alt=media&token=${downloadToken}`;
+      } catch (storageError) {
+        console.error("Firebase Storage upload error:", storageError);
+      }
 
-      const createReminder = (type: string, scheduledDate: Date, bodyText: string) => {
-        if (scheduledDate.getTime() > nowTime.getTime()) {
-          const rRef = remindersRef.doc();
-          batch.set(rRef, {
-            uid: userId,
-            groupId: currentGroupId, // グループ全員通知のためのグループオーナーID
-            eventId: eventId,
-            fcmTokens: fcmTokens, // 家族全員のFCMトークン
-            scheduledAt: Timestamp.fromDate(scheduledDate),
-            title: '【おたよりリマインド】',
-            body: bodyText,
-            status: 'pending',
-            type: type,
-            createdAt: Timestamp.fromDate(nowTime)
+      // Gemini 3.5 Flash を呼び出し
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+
+      const prompt = `
+      あなたは優秀な学校・園の予定管理アシスタントです。
+      与えられた「おたより」の画像から、行事・イベントの予定を漏れなく全て抽出してください。
+      画像内の上部やヘッダーにあるタイトル情報（例：「7月スケジュール」「2026年」など）を注意深く読み取り、何年何月の予定であるかを正しく特定した上で、各マスのイベントの日付を確定させてください。
+      
+      以下のJSON配列フォーマットに完全に準拠して出力してください。Markdown（\`\`\`json 等）は不要です。
+      [
+        {
+          "title": "行事名",
+          "date": "YYYY-MM-DD",
+          "details": "持ち物や詳細",
+          "category": "school または event または medical"
+        }
+      ]
+      `;
+
+      const result = await model.generateContent([
+        prompt,
+        { inlineData: { data: base64Data, mimeType: mimeType } }
+      ]);
+
+      const text = result.response.text();
+      const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      let events = [];
+      try {
+        events = JSON.parse(jsonStr);
+      } catch (jsonError: any) {
+        console.error("Gemini output JSON parse error:", jsonError, "Raw output:", text);
+        return NextResponse.json({ error: "おたよりの解析データが正しいフォーマットではありませんでした。もう一度スキャンし直してください。" }, { status: 500 });
+      }
+
+      for (let idx = 0; idx < events.length; idx++) {
+        const ev = events[idx];
+        const eventId = `ai-scan-${Date.now()}-${imgIdx}-${idx}`;
+        const titleText = (ev.title || '').trim();
+        const detailsText = (ev.details || '').trim();
+
+        const cleanTitle = titleText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const cleanDetails = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        let matchedMember = groupMembers.find(m =>
+          (m.name && (cleanTitle.includes(m.name) || cleanDetails.includes(m.name)))
+        );
+
+        if (!matchedMember) {
+          matchedMember = groupMembers.find(m => {
+            const name = m.name || '';
+            if (name.includes('パパ') && (cleanTitle.includes('パパ') || cleanDetails.includes('パパ') || cleanTitle.includes('父') || cleanDetails.includes('父'))) return true;
+            if (name.includes('ママ') && (cleanTitle.includes('ママ') || cleanDetails.includes('ママ') || cleanTitle.includes('母') || cleanDetails.includes('母'))) return true;
+            if (name.includes('子') && (cleanTitle.includes('子') || cleanDetails.includes('子') || cleanTitle.includes('園児') || cleanDetails.includes('児童'))) return true;
+            return false;
           });
         }
-      };
 
-      if (eventData.date) {
-        try {
-          const threeDaysAgoDate = getJstDate19(eventData.date, 3);
-          const bodyTextThree = `「${eventData.title}」の3日前です。準備物の用意はバッチリですか？`;
-          createReminder('three_days_ago', threeDaysAgoDate, bodyTextThree);
+        const finalMember = matchedMember || groupMembers[0];
 
-          const oneDayAgoDate = getJstDate19(eventData.date, 1);
-          const bodyTextOne = `明日は「${eventData.title}」当日です。お忘れ物がないかチェック！`;
-          createReminder('one_day_ago', oneDayAgoDate, bodyTextOne);
-        } catch (dateErr) {
-          console.error("Reminder parse error:", dateErr);
-        }
+        const eventData = {
+          id: eventId,
+          title: cleanTitle || '無題の予定',
+          date: normalizeDate(ev.date),
+          details: cleanDetails,
+          category: ev.category || 'school',
+          color: (finalMember && finalMember.color) ? finalMember.color : 'orange',
+          memberId: (finalMember && finalMember.id) ? finalMember.id : 'owner',
+          imageUrl: imageUrl,
+          isNotificationEnabled: true, // オプトアウト通知用の新規フィールド（デフォルトON）
+          updatedAt: new Date().toISOString()
+        };
+
+        processedEvents.push(eventData);
+
+        const evRef = firestore.collection('groups').doc(currentGroupId).collection('events').doc(eventId);
+        batch.set(evRef, eventData, { merge: true });
       }
     }
 
     let fScanCount = scanCount;
-    let fLastScanMonth = lastScanMonth;
-
-    if (plan === 'premium') {
-      fScanCount += 1;
-      batch.set(userRef, {
-        scanCount: fScanCount,
-        lastScanMonth: currentMonthStr
-      }, { merge: true });
+    if (lastScanMonth !== currentMonthStr) {
+      fScanCount = incomingCount;
     } else {
-      if (fLastScanMonth !== currentMonthStr) {
-        fScanCount = 1;
-        batch.set(userRef, {
-          scanCount: fScanCount,
-          lastScanMonth: currentMonthStr
-        }, { merge: true });
-      } else {
-        fScanCount += 1;
-        batch.set(userRef, {
-          scanCount: fScanCount
-        }, { merge: true });
-      }
+      fScanCount += incomingCount;
     }
+
+    batch.set(userRef, {
+      scanCount: fScanCount,
+      lastScanMonth: currentMonthStr
+    }, { merge: true });
 
     await batch.commit();
 
-    return NextResponse.json({ success: true, events: processedEvents, remaining: Math.max(0, 10 - fScanCount), imageUrl });
+    return NextResponse.json({ success: true, events: processedEvents, remaining: Math.max(0, 10 - fScanCount) });
 
   } catch (error: any) {
     console.error("API Error:", error);

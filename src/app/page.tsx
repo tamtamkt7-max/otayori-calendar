@@ -318,8 +318,57 @@ export default function Home() {
     if (!user || !editingEvent) return;
     try {
       setLoading(true);
-      const finalEvent = { ...editingEvent, id: editingEvent.id || `manual-${Date.now()}` };
-      await saveEventToBackend(finalEvent);
+
+      const eventsToSave: any[] = [];
+      const isNewEvent = !editingEvent.id;
+      const baseEventId = editingEvent.id || `manual-${Date.now()}`;
+
+      // 基本の予定データを作成
+      const baseEvent = {
+        ...editingEvent,
+        id: baseEventId,
+        isNotificationEnabled: editingEvent.isNotificationEnabled !== false, // トグルの値を確実に反映
+        memo: (editingEvent.memo || '').trim() // メモの値を確実に反映
+      };
+      
+      eventsToSave.push(baseEvent);
+
+      // 新規作成時かつ繰り返し設定がある場合
+      if (
+        isNewEvent &&
+        editingEvent.recurrence &&
+        editingEvent.recurrence !== 'none'
+      ) {
+        const count = editingEvent.recurrenceCount || 2;
+        const interval = editingEvent.recurrence;
+        const baseDate = new Date(editingEvent.date.replace(/-/g, '/'));
+
+        for (let i = 1; i < count; i++) {
+          const nextDate = new Date(baseDate);
+          if (interval === 'daily') {
+            nextDate.setDate(baseDate.getDate() + i);
+          } else if (interval === 'weekly') {
+            nextDate.setDate(baseDate.getDate() + i * 7);
+          } else if (interval === 'monthly') {
+            nextDate.setMonth(baseDate.getMonth() + i);
+          }
+
+          const y = nextDate.getFullYear();
+          const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+          const d = String(nextDate.getDate()).padStart(2, '0');
+          const nextDateStr = `${y}-${m}-${d}`;
+
+          eventsToSave.push({
+            ...baseEvent,
+            id: `manual-${Date.now()}-${i}`,
+            date: nextDateStr
+          });
+        }
+      }
+
+      // APIに送信して一括保存
+      await Promise.all(eventsToSave.map(evt => saveEventToBackend(evt)));
+
       await refetchEvents();
       setIsEventModalOpen(false);
       setEditingEvent(null);
@@ -398,30 +447,6 @@ export default function Home() {
     }
   };
 
-  /**
-   * 未処理アラート解除：pendingReview を false にして上書き保存し、モーダルを閉じる
-   */
-  const handleMarkAsReviewed = async () => {
-    if (!user || !editingEvent) return;
-    setLoading(true);
-    try {
-      const reviewedEvent = {
-        ...editingEvent,
-        id: editingEvent.id || `manual-${Date.now()}`,
-        pendingReview: false,
-      };
-      await saveEventToBackend(reviewedEvent);
-      // ローカルの events ステートも即時反映（楽観的更新）
-      setEvents(prev => prev.map(ev => ev.id === reviewedEvent.id ? { ...ev, pendingReview: false } : ev));
-      setIsEventModalOpen(false);
-      setEditingEvent(null);
-      await refetchEvents();
-    } catch (err) {
-      alert('確認済みにする処理に失敗しました💦');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleUpgrade = async () => {
     try {
@@ -491,39 +516,52 @@ export default function Home() {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const incomingCount = files.length;
+    if (!userStatus.isPremium && incomingCount > userStatus.remainingScans) {
+      alert(`選択された画像は ${incomingCount} 枚ですが、今月の残り可能枚数は ${userStatus.remainingScans} 枚です😢`);
+      return;
+    }
+
     setLoading(true);
     setScanResult(null);
     setNewScannedEvents([]);
     setErrorMessage(null);
 
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = async () => {
-      const rawBase64 = reader.result as string;
-      try {
-        const base64Image = await compressImage(rawBase64);
-        const response = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64Image, userId: user?.uid }),
+    try {
+      const base64Images: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
         });
-        const data = await response.json();
-        if (response.ok) {
-          setNewScannedEvents(data.events || []);
-          setIsScanConfirmModalOpen(true);
-          setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
-        } else {
-          if (response.status === 403) setIsLimitModalOpen(true);
-          else setErrorMessage(data.error || "おたよりの読み込みに失敗しました😢");
-        }
-      } catch (err: any) {
-        setErrorMessage("通信に失敗しました。再度お試しください💦");
-      } finally {
-        setLoading(false);
+        const compressed = await compressImage(base64);
+        base64Images.push(compressed);
       }
-    };
+
+      const response = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: base64Images, userId: user?.uid }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setNewScannedEvents(data.events || []);
+        setIsScanConfirmModalOpen(true);
+        setUserStatus(prev => ({ ...prev, remainingScans: data.remaining }));
+      } else {
+        if (response.status === 403) setIsLimitModalOpen(true);
+        else setErrorMessage(data.error || "おたよりの読み込みに失敗しました😢");
+      }
+    } catch (err: any) {
+      setErrorMessage("通信に失敗しました。再度お試しください💦");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -643,7 +681,7 @@ export default function Home() {
             <div className="p-4 text-center space-y-1">
               <p className="text-[10px] font-extrabold text-stone-500">無料プラン</p>
               <p className="text-lg font-black text-stone-700">¥0</p>
-              <p className="text-[9px] text-stone-400 leading-relaxed">月10回まで<br />スキャン可能</p>
+              <p className="text-[9px] text-stone-400 leading-relaxed">月10枚まで<br />スキャン可能</p>
             </div>
             <div className="p-4 text-center space-y-1 bg-amber-50/60">
               <p className="text-[10px] font-extrabold text-amber-600">👑 プレミアム</p>
@@ -720,13 +758,13 @@ export default function Home() {
 
       <main className="max-w-5xl mx-auto px-4 pt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 space-y-6">
-          {/* プレミアム時は残回数を非表示 */}
+          {/* プレミアム時は残枚数を非表示 */}
           {!userStatus.isPremium && (
             <div className="bg-stone-100/50 border border-stone-200/60 rounded-3xl p-5 relative overflow-hidden">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h3 className="text-[11px] font-bold text-stone-500 tracking-wider">今月の自動よみとり残回数</h3>
-                  <p className="text-lg font-bold text-stone-600 mt-0.5">あと <span className="text-orange-400 text-3xl font-black">{userStatus.remainingScans}</span> 回</p>
+                  <h3 className="text-[11px] font-bold text-stone-500 tracking-wider">今月の自動よみとり残枚数</h3>
+                  <p className="text-lg font-bold text-stone-600 mt-0.5">あと <span className="text-orange-400 text-3xl font-black">{userStatus.remainingScans}</span> 枚</p>
                 </div>
               </div>
               <div className="w-full bg-stone-200/50 h-2 rounded-full overflow-hidden">
@@ -768,15 +806,10 @@ export default function Home() {
                   const matchedMember = members.find(m => m.id === ev.memberId);
                   const matchedPalette = COLOR_PALETTE.find(p => p.id === (matchedMember ? matchedMember.color : (ev.color || 'orange'))) || COLOR_PALETTE[0];
                   return (
-                    <div key={ev.id} className={`p-3.5 rounded-2xl border transition-all ${matchedPalette.cardClass} ${ev.pendingReview ? 'ring-1 ring-rose-200' : ''}`}>
+                    <div key={ev.id} className={`p-3.5 rounded-2xl border transition-all ${matchedPalette.cardClass}`}>
                       <div className="flex justify-between items-start">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${matchedPalette.badgeClass}`}>{matchedMember ? matchedMember.name : '共通'}</span>
-                          {ev.pendingReview && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-500 flex items-center gap-0.5 animate-pulse">
-                              🔴 未確認
-                            </span>
-                          )}
                         </div>
                         <div className="flex gap-1.5">
                           <button onClick={() => { setEditingEvent(ev); setIsEventModalOpen(true); }} className="text-stone-400 text-xs">✏️</button>
@@ -785,6 +818,9 @@ export default function Home() {
                       </div>
                       <h4 className="font-bold text-stone-700 text-sm mt-2">{ev.title}</h4>
                       <p className="text-[11px] text-stone-500 mt-1 whitespace-pre-wrap">{ev.details}</p>
+                      {ev.memo && (
+                        <p className="text-[11px] text-stone-400 mt-1.5 whitespace-pre-wrap pt-1.5 border-t border-dashed border-stone-100">📝 {ev.memo}</p>
+                      )}
                     </div>
                   );
                 })}
@@ -864,14 +900,9 @@ export default function Home() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {events.filter(e => e.imageUrl).sort((a, b) => b.date.localeCompare(a.date)).map((ev) => (
-                      <div key={ev.id} className={`bg-stone-50 border rounded-2xl overflow-hidden transition flex flex-col ${ev.pendingReview ? 'border-rose-200 hover:border-rose-300' : 'hover:border-orange-300'}`}>
+                      <div key={ev.id} className="bg-stone-50 border rounded-2xl overflow-hidden transition flex flex-col hover:border-orange-300">
                         <div className="aspect-[4/3] bg-stone-100 relative group overflow-hidden border-b border-stone-150 cursor-pointer" onClick={() => setActiveImageUrl(ev.imageUrl)}>
                           <img src={ev.imageUrl} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                          {ev.pendingReview && (
-                            <div className="absolute top-2 left-2 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-0.5">
-                              🔴 未確認
-                            </div>
-                          )}
                         </div>
                         <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                           <div>
@@ -885,12 +916,9 @@ export default function Home() {
                           </div>
                           <button
                             onClick={() => { setEditingEvent({ ...ev }); setIsEventModalOpen(true); }}
-                            className={`w-full py-2 font-extrabold rounded-xl text-[10px] transition ${ev.pendingReview
-                              ? 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100'
-                              : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-                              }`}
+                            className="w-full py-2 font-extrabold rounded-xl text-[10px] transition bg-white border border-stone-200 text-stone-600 hover:bg-stone-50"
                           >
-                            {ev.pendingReview ? '🔴 内容を確認して完了にする' : '✍️ 予定の確認・編集'}
+                            ✍️ 予定の確認・編集
                           </button>
                         </div>
                       </div>
@@ -932,7 +960,7 @@ export default function Home() {
           <div className="bg-white rounded-3xl shadow-sm border border-stone-100 p-5 text-center">
             <label onClick={(e) => { if (isReadOnly) { e.preventDefault(); alert("閲覧専用です"); } }} className="w-full py-7 bg-orange-200 text-orange-900 rounded-3xl font-black text-base flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-300 transition">
               <span className="text-3xl">📷</span><p className="text-sm font-bold">プリントを撮る</p>
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading || isReadOnly} />
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={loading || isReadOnly} multiple />
             </label>
             <button onClick={() => { if (isReadOnly) return; setEditingEvent({ title: "", date: todayStr, details: "", category: "school", color: "orange", imageUrl: null }); setIsEventModalOpen(true); }} className="w-full mt-3 py-3 bg-stone-50 text-stone-600 font-bold hover:bg-stone-100 transition rounded-2xl text-xs border border-stone-200">✍️ 手動で予定を追加する</button>
           </div>
@@ -958,8 +986,17 @@ export default function Home() {
                 <textarea value={editingEvent.details || ''} onChange={(e) => setEditingEvent({ ...editingEvent, details: e.target.value })} className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl h-20 resize-none" />
               </div>
               <div>
+                <label className="text-[10px] font-bold text-stone-400 block mb-1">メモ（通知に含まれます）</label>
+                <textarea
+                  value={editingEvent.memo || ''}
+                  onChange={(e) => setEditingEvent({ ...editingEvent, memo: e.target.value })}
+                  placeholder="持ち物などのメモを入力"
+                  className="w-full px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl h-16 resize-none"
+                />
+              </div>
+              <div>
                 <label className="text-[10px] font-bold text-stone-400 block mb-1">誰の予定？</label>
-                <div className="flex gap-2 mt-1 flex-wrap">
+                <div className="flex gap-2 mt-1 flex-wrap font-sans">
                   {members.map(m => {
                     const isSelected = editingEvent.memberId === m.id || (!editingEvent.memberId && m.id === 'owner');
                     const matchedPalette = COLOR_PALETTE.find(p => p.id === m.color) || COLOR_PALETTE[0];
@@ -967,18 +1004,60 @@ export default function Home() {
                   })}
                 </div>
               </div>
-            </div>
 
-            {/* 未処理アラートバナー（pendingReview: true の場合のみ表示） */}
-            {editingEvent.pendingReview && (
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 flex items-start gap-2">
-                <span className="text-base mt-0.5">🔴</span>
-                <div>
-                  <p className="text-[10px] font-black text-rose-600">未確認のおたよりです</p>
-                  <p className="text-[9px] text-rose-500 mt-0.5 leading-relaxed">内容を確認したら「確認済みにする」を押してアラートを解除してください。</p>
+              {/* 通知ON/OFFトグル */}
+              <div className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl border border-stone-150">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🔔</span>
+                  <div>
+                    <p className="text-xs font-bold text-stone-700">前日にプッシュ通知する</p>
+                    <p className="text-[9px] text-stone-400">JST 20:00頃に家族全員へリマインドします。</p>
+                  </div>
                 </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingEvent.isNotificationEnabled !== false}
+                    onChange={(e) => setEditingEvent({ ...editingEvent, isNotificationEnabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-8 h-4 bg-stone-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-400"></div>
+                </label>
               </div>
-            )}
+
+              {/* 繰り返し設定 (新規追加時のみ) */}
+              {!editingEvent.id && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-orange-50/40 rounded-2xl border border-orange-100/60">
+                  <div>
+                    <label className="text-[9px] font-bold text-orange-850 block mb-1">🔄 繰り返し</label>
+                    <select
+                      value={editingEvent.recurrence || 'none'}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, recurrence: e.target.value })}
+                      className="w-full px-2 py-1.5 text-[11px] bg-white border border-orange-200 rounded-lg font-bold"
+                    >
+                      <option value="none">繰り返さない</option>
+                      <option value="daily">毎日</option>
+                      <option value="weekly">毎週</option>
+                      <option value="monthly">毎月</option>
+                    </select>
+                  </div>
+                  {editingEvent.recurrence && editingEvent.recurrence !== 'none' && (
+                    <div>
+                      <label className="text-[9px] font-bold text-orange-850 block mb-1">作成回数</label>
+                      <select
+                        value={editingEvent.recurrenceCount || 2}
+                        onChange={(e) => setEditingEvent({ ...editingEvent, recurrenceCount: parseInt(e.target.value, 10) })}
+                        className="w-full px-2 py-1.5 text-[11px] bg-white border border-orange-200 rounded-lg font-bold"
+                      >
+                        {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(num => (
+                          <option key={num} value={num}>{num}回</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-2 pt-2">
               <button type="submit" disabled={loading} className="flex-1 bg-orange-400 text-white font-bold py-3 rounded-xl text-xs shadow-sm disabled:opacity-50">
@@ -986,18 +1065,6 @@ export default function Home() {
               </button>
               <button type="button" onClick={() => { setIsEventModalOpen(false); setEditingEvent(null); }} className="flex-1 bg-white text-stone-500 border font-bold py-3 rounded-xl text-xs">閉じる</button>
             </div>
-
-            {/* 確認済みボタン（pendingReview: true の場合のみ表示） */}
-            {editingEvent.pendingReview && (
-              <button
-                type="button"
-                onClick={handleMarkAsReviewed}
-                disabled={loading}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black py-3.5 rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5"
-              >
-                ✅ 確認済みにする（アラート解除）
-              </button>
-            )}
           </form>
         </div>
       )}
@@ -1022,7 +1089,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold text-stone-400 block">現在のプラン</span>
-                  <span className="text-sm font-black text-stone-600">{userStatus.isPremium ? "👑 プレミアム（使い放題）" : `無料プラン (残りスキャン ${userStatus.remainingScans}回)`}</span>
+                  <span className="text-sm font-black text-stone-600">{userStatus.isPremium ? "👑 プレミアム（使い放題）" : `無料プラン (残りスキャン ${userStatus.remainingScans}枚)`}</span>
                 </div>
                 {!userStatus.isPremium && (
                   <button onClick={() => { setIsSettingModalOpen(false); handleUpgrade(); }} className="text-[10px] bg-gradient-to-r from-orange-400 to-amber-400 text-white px-3 py-2 rounded-xl font-extrabold">無制限にする</button>

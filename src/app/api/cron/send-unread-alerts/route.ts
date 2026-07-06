@@ -2,7 +2,6 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { getFirebaseAdmin } from '../../../../lib/firebaseAdmin';
-import { Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
 /**
@@ -30,13 +29,12 @@ async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<str
 }
 
 /**
- * [PREMIUM限定] おたより未処理アラートCronエンドポイント
+ * 明日の予定お知らせCronエンドポイント
  *
- * スキャンによって追加されたイベント（pendingReview: true）が
- * 24時間以上未確認のプレミアムグループに対して通知を送信する。
- * スパム防止のため、同一グループへの送信は48時間に1回に制限する。
+ * 明日が予定日（date == YYYY-MM-DD）かつ通知がOFFではない（isNotificationEnabled !== false）
+ * イベントを抽出し、家族全員にプッシュ通知を送信する。
  *
- * スケジュール: 毎日 UTC 11:00 (JST 20:00) — vercel.json で設定済み
+ * スケジュール: 毎日 JST 20:00 (vercel.json にて設定)
  */
 export async function GET(req: Request) {
   try {
@@ -64,106 +62,84 @@ export async function GET(req: Request) {
     }
 
     const messaging = getMessaging();
-    const now = new Date();
 
-    // 2. プレミアムプランのユーザーを取得
-    const premiumUsersSnapshot = await db.collection('users')
-      .where('plan', '==', 'premium')
+    // 2. 日本時間 (JST) で「明日」の日付文字列を計算 (UTC+9時間に24時間を足す)
+    const now = new Date();
+    const jstTomorrow = new Date(now.getTime() + (9 + 24) * 60 * 60 * 1000);
+    const tomorrowStr = `${jstTomorrow.getFullYear()}-${String(jstTomorrow.getMonth() + 1).padStart(2, '0')}-${String(jstTomorrow.getDate()).padStart(2, '0')}`;
+
+    console.log(`[send-unread-alerts] Scanning events for tomorrow: ${tomorrowStr}`);
+
+    // 3. コレクショングループクエリで明日の予定を取得
+    const tomorrowEventsSnapshot = await db.collectionGroup('events')
+      .where('date', '==', tomorrowStr)
       .get();
 
-    if (premiumUsersSnapshot.empty) {
-      return NextResponse.json({ success: true, message: 'No premium users found.' });
+    if (tomorrowEventsSnapshot.empty) {
+      return NextResponse.json({ success: true, message: 'No events tomorrow.' });
     }
 
-    // 3. グループオーナーID でデデュープ（同一グループに複数プレミアムメンバーがいる場合の重複処理を防ぐ）
-    const processedGroupIds = new Set<string>();
-    const results: any[] = [];
-    let alertsSent = 0;
-    let alertsSkipped = 0;
-
-    for (const userDoc of premiumUsersSnapshot.docs) {
-      const uid = userDoc.id;
-      const userData = userDoc.data();
-
-      // グループオーナーID を解決（未設定の場合は自分自身がオーナー）
-      const groupOwnerId: string = userData.groupId || uid;
-
-      // 同一グループへの重複処理をスキップ
-      if (processedGroupIds.has(groupOwnerId)) {
-        continue;
+    // 4. グループ（家族）ごとにイベントを分類し、通知OFFのものを除外
+    const groupEventsMap = new Map<string, any[]>();
+    tomorrowEventsSnapshot.forEach((doc: any) => {
+      const eventData = doc.data();
+      // 通知OFFのイベントはスキップ
+      if (eventData.isNotificationEnabled === false) {
+        return;
       }
-      processedGroupIds.add(groupOwnerId);
-
-      // 4. スパム防止: 直近 48 時間以内にアラートを送信済みならスキップ
-      const ownerDoc = await db.collection('users').doc(groupOwnerId).get();
-      const ownerData = ownerDoc.exists ? ownerDoc.data() : {};
-      const lastAlertSentAt = ownerData?.lastUnreadAlertSentAt;
-
-      if (lastAlertSentAt) {
-        const lastAlertDate: Date = lastAlertSentAt.toDate ? lastAlertSentAt.toDate() : new Date(lastAlertSentAt);
-        const hoursSinceLastAlert = (now.getTime() - lastAlertDate.getTime()) / (1000 * 60 * 60);
-        if (hoursSinceLastAlert < 48) {
-          console.log(`[send-unread-alerts] Skipping group ${groupOwnerId}: last alert sent ${hoursSinceLastAlert.toFixed(1)}h ago.`);
-          alertsSkipped++;
-          continue;
+      
+      // doc.ref.parent.parent.id で所属する groupId (親ドキュメントID) を取得
+      const groupId = doc.ref.parent?.parent?.id;
+      if (groupId) {
+        if (!groupEventsMap.has(groupId)) {
+          groupEventsMap.set(groupId, []);
         }
+        groupEventsMap.get(groupId)?.push(eventData);
       }
+    });
 
-      // 5. pendingReview: true のイベントを取得（スキャン済み未確認イベント）
-      let unreadEventsSnapshot: any;
-      try {
-        unreadEventsSnapshot = await db.collection('groups')
-          .doc(groupOwnerId)
-          .collection('events')
-          .where('pendingReview', '==', true)
-          .get();
-      } catch (queryErr: any) {
-        console.error(`[send-unread-alerts] Failed to query events for group ${groupOwnerId}:`, queryErr);
-        continue;
-      }
+    if (groupEventsMap.size === 0) {
+      return NextResponse.json({ success: true, message: 'No notification-enabled events tomorrow.' });
+    }
 
-      if (unreadEventsSnapshot.empty) {
-        results.push({ groupOwnerId, status: 'no_unread_events' });
-        continue;
-      }
+    let notificationsSent = 0;
+    const results: any[] = [];
 
-      // 6. 24時間以上前に作成された未処理イベントのみ対象とする（追加直後のアラート送信を防ぐ）
-      const cutoffTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const staleUnreadEvents = unreadEventsSnapshot.docs.filter((doc: any) => {
-        const updatedAt = doc.data().updatedAt;
-        if (!updatedAt) return false;
-        const updatedDate = new Date(updatedAt);
-        return updatedDate < cutoffTime;
-      });
-
-      if (staleUnreadEvents.length === 0) {
-        results.push({ groupOwnerId, status: 'events_too_recent' });
-        continue;
-      }
-
-      // 7. グループ全員のFCMトークンを収集
-      const fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
+    // 5. グループごとにプッシュ通知をマルチキャスト送信
+    for (const [groupId, events] of groupEventsMap.entries()) {
+      const fcmTokens = await collectGroupFcmTokens(db, groupId);
       if (fcmTokens.length === 0) {
-        results.push({ groupOwnerId, status: 'no_fcm_tokens' });
+        results.push({ groupId, status: 'skipped_no_tokens' });
         continue;
       }
 
-      // 8. 未処理アラート通知を送信
-      const unreadCount = staleUnreadEvents.length;
-      const notificationBody = unreadCount === 1
-        ? `スキャンしたおたより「${staleUnreadEvents[0].data().title || '予定'}」がまだ未確認です。カレンダーを確認しましょう！`
-        : `${unreadCount}件のスキャン済みおたよりがまだ未確認です。カレンダーを確認しましょう！`;
+      // 通知テキストの作成
+      let bodyText = '';
+      if (events.length === 1) {
+        const ev = events[0];
+        bodyText = `明日は「${ev.title}」の日です。`;
+        if (ev.memo && ev.memo.trim()) {
+          bodyText += `（メモ: ${ev.memo.trim()}）`;
+        }
+      } else {
+        // 複数予定の場合
+        bodyText = `明日は「${events[0].title}」など ${events.length} 件の予定があります。`;
+        const detailsArr = events
+          .map(ev => `・${ev.title}${ev.memo ? ` (${ev.memo})` : ''}`)
+          .join('\n');
+        bodyText += `\n${detailsArr}`;
+      }
 
       try {
         const response = await messaging.sendEachForMulticast({
           tokens: fcmTokens,
           notification: {
-            title: '📋 未確認のおたよりがあります【プレミアム通知】',
-            body: notificationBody,
+            title: '⏰ 明日の予定のお知らせ',
+            body: bodyText,
           },
           webpush: {
             headers: {
-              Urgency: 'normal',
+              Urgency: 'high',
             },
             notification: {
               icon: '/favicon.ico',
@@ -173,37 +149,23 @@ export async function GET(req: Request) {
           },
         });
 
-        // 9. 送信後に lastUnreadAlertSentAt を更新してスパム防止
-        await db.collection('users').doc(groupOwnerId).update({
-          lastUnreadAlertSentAt: Timestamp.fromDate(now)
-        });
-
-        alertsSent++;
+        notificationsSent++;
         results.push({
-          groupOwnerId,
+          groupId,
           status: 'sent',
-          unreadCount,
-          successCount: response.successCount,
-          failureCount: response.failureCount,
+          devicesNotified: response.successCount,
+          devicesFailed: response.failureCount
         });
-
-        console.log(`[send-unread-alerts] Sent alert to group ${groupOwnerId}: ${unreadCount} unread events, ${response.successCount} devices notified.`);
-
-      } catch (sendError: any) {
-        console.error(`[send-unread-alerts] Error sending to group ${groupOwnerId}:`, sendError);
-        results.push({
-          groupOwnerId,
-          status: 'failed',
-          error: sendError.message,
-        });
+      } catch (sendErr: any) {
+        console.error(`[send-unread-alerts] Send error for group ${groupId}:`, sendErr);
+        results.push({ groupId, status: 'failed', error: sendErr.message });
       }
     }
 
     return NextResponse.json({
       success: true,
-      processedGroups: processedGroupIds.size,
-      alertsSent,
-      alertsSkipped,
+      processedGroups: groupEventsMap.size,
+      notificationsSent,
       details: results,
     });
 
