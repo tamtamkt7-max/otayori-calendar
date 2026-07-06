@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: "おたよりカレンダー | プリントを撮るだけ自動登録",
   description: "園や学校のプリントをパシャッと撮るだけ！AIが予定や持ち物を自動でカレンダーに登録し、家族で共有できる神アプリです。",
   manifest: "/manifest.webmanifest",
+  verification: {
+    google: "pub-5461809032953003",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
