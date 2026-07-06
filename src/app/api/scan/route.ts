@@ -35,7 +35,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { image, images, userId } = body;
+    const { image, images, userId, targetMemberId } = body;
 
     const base64Images: string[] = images || (image ? [image] : []);
 
@@ -242,21 +242,27 @@ export async function POST(req: Request) {
         const cleanTitle = titleText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const cleanDetails = detailsText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        let matchedMember = groupMembers.find(m =>
-          (m.name && (cleanTitle.includes(m.name) || cleanDetails.includes(m.name)))
-        );
-
-        if (!matchedMember) {
-          matchedMember = groupMembers.find(m => {
-            const name = m.name || '';
-            if (name.includes('パパ') && (cleanTitle.includes('パパ') || cleanDetails.includes('パパ') || cleanTitle.includes('父') || cleanDetails.includes('父'))) return true;
-            if (name.includes('ママ') && (cleanTitle.includes('ママ') || cleanDetails.includes('ママ') || cleanTitle.includes('母') || cleanDetails.includes('母'))) return true;
-            if (name.includes('子') && (cleanTitle.includes('子') || cleanDetails.includes('子') || cleanTitle.includes('園児') || cleanDetails.includes('児童'))) return true;
-            return false;
-          });
+        let finalMember = null;
+        if (targetMemberId && targetMemberId !== 'all') {
+          finalMember = groupMembers.find(m => m.id === targetMemberId);
         }
 
-        const finalMember = matchedMember || groupMembers[0];
+        if (!finalMember) {
+          let matchedMember = groupMembers.find(m =>
+            (m.name && (cleanTitle.includes(m.name) || cleanDetails.includes(m.name)))
+          );
+
+          if (!matchedMember) {
+            matchedMember = groupMembers.find(m => {
+              const name = m.name || '';
+              if (name.includes('パパ') && (cleanTitle.includes('パパ') || cleanDetails.includes('パパ') || cleanTitle.includes('父') || cleanDetails.includes('父'))) return true;
+              if (name.includes('ママ') && (cleanTitle.includes('ママ') || cleanDetails.includes('ママ') || cleanTitle.includes('母') || cleanDetails.includes('母'))) return true;
+              if (name.includes('子') && (cleanTitle.includes('子') || cleanDetails.includes('子') || cleanTitle.includes('園児') || cleanDetails.includes('児童'))) return true;
+              return false;
+            });
+          }
+          finalMember = matchedMember || groupMembers[0];
+        }
 
         const eventData = {
           id: eventId,

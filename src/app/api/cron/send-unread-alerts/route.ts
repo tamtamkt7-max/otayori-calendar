@@ -79,10 +79,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, message: 'No events tomorrow.' });
     }
 
-    // 4. グループ（家族）ごとにイベントを分類し、通知OFFのものを除外
+    // 4. グループ（家族）ごとにイベントを分類し、通知OFFのものを除外（かつ同一イベントIDの重複取得防止）
     const groupEventsMap = new Map<string, any[]>();
+    const seenEventIds = new Set<string>();
+
     tomorrowEventsSnapshot.forEach((doc: any) => {
       const eventData = doc.data();
+      const eventId = doc.id || eventData.id;
+
+      if (eventId && seenEventIds.has(eventId)) {
+        console.warn(`[send-unread-alerts] Skipping duplicate eventId: ${eventId}`);
+        return;
+      }
+
       // 通知OFFのイベントはスキップ
       if (eventData.isNotificationEnabled === false) {
         return;
@@ -91,6 +100,9 @@ export async function GET(req: Request) {
       // doc.ref.parent.parent.id で所属する groupId (親ドキュメントID) を取得
       const groupId = doc.ref.parent?.parent?.id;
       if (groupId) {
+        if (eventId) {
+          seenEventIds.add(eventId);
+        }
         if (!groupEventsMap.has(groupId)) {
           groupEventsMap.set(groupId, []);
         }
@@ -107,7 +119,10 @@ export async function GET(req: Request) {
 
     // 5. グループごとにプッシュ通知をマルチキャスト送信
     for (const [groupId, events] of groupEventsMap.entries()) {
-      const fcmTokens = await collectGroupFcmTokens(db, groupId);
+      let fcmTokens = await collectGroupFcmTokens(db, groupId);
+      // 重複排除と無効なトークンの除去を徹底
+      fcmTokens = Array.from(new Set(fcmTokens)).filter(token => token && typeof token === 'string' && token.trim() !== '');
+
       if (fcmTokens.length === 0) {
         results.push({ groupId, status: 'skipped_no_tokens' });
         continue;

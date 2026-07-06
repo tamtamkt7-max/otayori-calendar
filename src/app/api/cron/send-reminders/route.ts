@@ -105,7 +105,9 @@ export async function GET(req: Request) {
       }
 
       // グループ全員のFCMトークンを収集（家族全員へのマルチキャスト）
-      const fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
+      let fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
+      // 重複排除と無効なトークンの除去を徹底
+      fcmTokens = Array.from(new Set(fcmTokens)).filter(token => token && typeof token === 'string' && token.trim() !== '');
 
       if (fcmTokens.length === 0) {
         // トークンが無い場合はスキップ扱いに更新
