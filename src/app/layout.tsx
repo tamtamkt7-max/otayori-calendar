@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { GoogleAnalytics } from '@next/third-parties/google';
 import "./globals.css";
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -74,7 +75,9 @@ export default function RootLayout({
         )}
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         {gaId && <GoogleAnalytics gaId={gaId} />}
       </body>
     </html>

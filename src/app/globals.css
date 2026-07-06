@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FDFBF9;
+  --foreground: #2d2d2d;
 }
 
 @theme inline {
@@ -12,15 +12,274 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
+
+/* ==========================================================================
+   テーマ着せ替えシステム (Data Theme Styles)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. dark (目に優しいダークグレーベース)
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --background: #121212;
+  --foreground: #e2e8f0;
+}
+[data-theme="dark"] body,
+[data-theme="dark"] .bg-\[\#FDFBF9\],
+[data-theme="dark"] .bg-stone-50 {
+  background-color: #121212 !important;
+  background-image: none !important;
+  color: #e2e8f0 !important;
+}
+[data-theme="dark"] .bg-white {
+  background-color: #1a1a1a !important;
+}
+[data-theme="dark"] .text-stone-700,
+[data-theme="dark"] .text-stone-600,
+[data-theme="dark"] .text-stone-800 {
+  color: #e2e8f0 !important;
+}
+[data-theme="dark"] .text-stone-400,
+[data-theme="dark"] .text-stone-50 {
+  color: #94a3b8 !important;
+}
+[data-theme="dark"] .border,
+[data-theme="dark"] .border-stone-100,
+[data-theme="dark"] .border-stone-150,
+[data-theme="dark"] .border-stone-200,
+[data-theme="dark"] .border-orange-100 {
+  border-color: #2d3748 !important;
+}
+[data-theme="dark"] .bg-orange-400 {
+  background-color: #d97706 !important; /* 深いオレンジ・アンバー */
+}
+[data-theme="dark"] .bg-orange-200 {
+  background-color: #3b2308 !important;
+  color: #fbbf24 !important;
+}
+[data-theme="dark"] .bg-orange-50,
+[data-theme="dark"] .bg-orange-50\/50 {
+  background-color: #241604 !important;
+  border-color: #5c3e07 !important;
+}
+[data-theme="dark"] .text-orange-700,
+[data-theme="dark"] .text-orange-800,
+[data-theme="dark"] .text-orange-400 {
+  color: #fbbf24 !important;
+}
+[data-theme="dark"] select,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea {
+  background-color: #2d2d2d !important;
+  color: #e2e8f0 !important;
+  border-color: #4a5568 !important;
+}
+
+/* --------------------------------------------------------------------------
+   2. cat (アースカラー・猫をあしらった丸っこいボタンと遊び心)
+   -------------------------------------------------------------------------- */
+[data-theme="cat"] {
+  --background: #FAF6F0;
+  --foreground: #4F46E5;
+}
+[data-theme="cat"] body,
+[data-theme="cat"] .bg-\[\#FDFBF9\] {
+  background-color: #FAF6F0 !important;
+  color: #524A40 !important;
+}
+[data-theme="cat"] .bg-white {
+  background-color: #F4EAE0 !important; /* 温かみのあるアイボリー */
+}
+[data-theme="cat"] .bg-stone-50 {
+  background-color: #EAE3D2 !important;
+}
+[data-theme="cat"] .text-stone-700,
+[data-theme="cat"] .text-stone-600,
+[data-theme="cat"] .text-stone-800 {
+  color: #524A40 !important;
+}
+[data-theme="cat"] .border,
+[data-theme="cat"] .border-stone-100,
+[data-theme="cat"] .border-stone-150,
+[data-theme="cat"] .border-stone-200 {
+  border-color: #D3C5B5 !important;
+}
+[data-theme="cat"] .bg-orange-400 {
+  background-color: #C27664 !important; /* テラコッタ */
+  border-radius: 9999px !important; /* 完全に丸いボタン */
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+[data-theme="cat"] .bg-orange-400:hover {
+  transform: scale(1.05) rotate(1deg) !important;
+}
+[data-theme="cat"] .bg-orange-200 {
+  background-color: #E2C799 !important;
+  color: #524A40 !important;
+}
+[data-theme="cat"] button,
+[data-theme="cat"] .rounded-xl,
+[data-theme="cat"] .rounded-2xl {
+  border-radius: 1.5rem !important; /* 丸みを強化 */
+}
+
+/* --------------------------------------------------------------------------
+   3. picture-book (パステル調・子ども向け絵本風の丸っこいUI)
+   -------------------------------------------------------------------------- */
+[data-theme="picture-book"] {
+  --background: #FFFDF4;
+  --foreground: #6D4C41;
+}
+[data-theme="picture-book"] body,
+[data-theme="picture-book"] .bg-\[\#FDFBF9\],
+[data-theme="picture-book"] .bg-stone-50 {
+  background-color: #FFFDF4 !important;
+  color: #6D4C41 !important;
+}
+[data-theme="picture-book"] .bg-white {
+  background-color: #FFFDF4 !important;
+  border: 3px solid #FFECB3 !important; /* 手書きのような境界線 */
+}
+[data-theme="picture-book"] .text-stone-700,
+[data-theme="picture-book"] .text-stone-600,
+[data-theme="picture-book"] .text-stone-800 {
+  color: #6D4C41 !important;
+}
+[data-theme="picture-book"] .border,
+[data-theme="picture-book"] .border-stone-100,
+[data-theme="picture-book"] .border-stone-150,
+[data-theme="picture-book"] .border-stone-200 {
+  border-color: #FFECB3 !important;
+}
+[data-theme="picture-book"] .bg-orange-400 {
+  background-color: #FF9A9E !important; /* 優しいピンク */
+  border-radius: 2rem !important;
+  border: 2px solid #FFECB3 !important;
+}
+[data-theme="picture-book"] .bg-orange-200 {
+  background-color: #E0F7FA !important;
+  color: #00838F !important;
+  border-radius: 1.5rem !important;
+}
+[data-theme="picture-book"] .rounded-xl,
+[data-theme="picture-book"] .rounded-2xl,
+[data-theme="picture-book"] .rounded-3xl,
+[data-theme="picture-book"] button,
+[data-theme="picture-book"] div[role="dialog"] {
+  border-radius: 2.25rem !important; /* 圧倒的角丸 */
+}
+
+/* --------------------------------------------------------------------------
+   4. botanical (カフェのような落ち着いたオリーブグリーン)
+   -------------------------------------------------------------------------- */
+[data-theme="botanical"] {
+  --background: #F4F9F4;
+  --foreground: #2D4232;
+}
+[data-theme="botanical"] body,
+[data-theme="botanical"] .bg-\[\#FDFBF9\],
+[data-theme="botanical"] .bg-stone-50 {
+  background-color: #F4F9F4 !important;
+  color: #2D4232 !important;
+}
+[data-theme="botanical"] .bg-white {
+  background-color: #E8EFE9 !important;
+}
+[data-theme="botanical"] .text-stone-700,
+[data-theme="botanical"] .text-stone-600,
+[data-theme="botanical"] .text-stone-800 {
+  color: #2D4232 !important;
+}
+[data-theme="botanical"] .border,
+[data-theme="botanical"] .border-stone-100,
+[data-theme="botanical"] .border-stone-150,
+[data-theme="botanical"] .border-stone-200 {
+  border-color: #D3E2D6 !important;
+}
+[data-theme="botanical"] .bg-orange-400 {
+  background-color: #5F8575 !important; /* オリーブグリーン */
+}
+[data-theme="botanical"] .bg-orange-200 {
+  background-color: #D6E4DB !important;
+  color: #2D4232 !important;
+}
+[data-theme="botanical"] .bg-orange-50 {
+  background-color: #E8EFE9 !important;
+}
+[data-theme="botanical"] .text-orange-700 {
+  color: #5F8575 !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. cyber (ネオンカラーとサイバーグリッド背景・ソリッドUI)
+   -------------------------------------------------------------------------- */
+[data-theme="cyber"] {
+  --background: #0A0D14;
+  --foreground: #00F2FE;
+}
+[data-theme="cyber"] body,
+[data-theme="cyber"] .bg-\[\#FDFBF9\] {
+  background-color: #0A0D14 !important;
+  background-image: 
+    linear-gradient(rgba(0, 242, 254, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 242, 254, 0.04) 1px, transparent 1px) !important;
+  background-size: 25px 25px !important;
+  color: #D2F1FF !important;
+}
+[data-theme="cyber"] .bg-white {
+  background-color: #121824 !important;
+  border: 1px solid #00F2FE !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.15) !important;
+}
+[data-theme="cyber"] .bg-stone-50 {
+  background-color: #172237 !important;
+}
+[data-theme="cyber"] .text-stone-700,
+[data-theme="cyber"] .text-stone-600,
+[data-theme="cyber"] .text-stone-800 {
+  color: #D2F1FF !important;
+}
+[data-theme="cyber"] .text-stone-400 {
+  color: #00F2FE !important;
+  opacity: 0.7;
+}
+[data-theme="cyber"] .border,
+[data-theme="cyber"] .border-stone-100,
+[data-theme="cyber"] .border-stone-150,
+[data-theme="cyber"] .border-stone-200,
+[data-theme="cyber"] .border-orange-100 {
+  border-color: #172e48 !important;
+}
+[data-theme="cyber"] .bg-orange-400 {
+  background-color: #FF007F !important; /* ネオンピンク */
+  color: #FFF !important;
+  border-radius: 0px !important;
+  box-shadow: 0 0 8px rgba(255, 0, 127, 0.4) !important;
+}
+[data-theme="cyber"] .bg-orange-200 {
+  background-color: #172237 !important;
+  color: #00F2FE !important;
+  border: 1px solid #00F2FE !important;
+}
+[data-theme="cyber"] .rounded-xl,
+[data-theme="cyber"] .rounded-2xl,
+[data-theme="cyber"] .rounded-3xl,
+[data-theme="cyber"] button,
+[data-theme="cyber"] input,
+[data-theme="cyber"] select,
+[data-theme="cyber"] div[role="dialog"] {
+  border-radius: 0px !important; /* 完全にソリッドで角ばったUI */
+}
+[data-theme="cyber"] input,
+[data-theme="cyber"] select,
+[data-theme="cyber"] textarea {
+  background-color: #0A0D14 !important;
+  border: 1px solid #00F2FE !important;
+  color: #D2F1FF !important;
+}
+

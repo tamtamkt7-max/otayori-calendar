@@ -27,6 +27,7 @@ import AdBanner from '../components/ads/AdBanner';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
 import Link from 'next/link';
 import { generateIcsString, downloadIcsFile } from '../lib/ics';
+import { useTheme } from 'next-themes';
 
 // Safari対策ヘルパー
 const safeParseDate = (dateStr: string | null | undefined): Date => {
@@ -50,6 +51,13 @@ export const COLOR_PALETTE: { id: MemberColor; name: string; bgClass: string; te
 ];
 
 export default function Home() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // --- 認証関連のState ---
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -1270,6 +1278,66 @@ export default function Home() {
                 </form>
               )}
             </div>
+
+            {/* テーマ着せ替えセクション */}
+            {mounted && (
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-stone-700">🎨 テーマ着せ替え</h4>
+                  {!userStatus.isPremium && (
+                    <span className="text-[9px] bg-gradient-to-r from-orange-400 to-amber-400 text-white px-2 py-0.5 rounded-full font-black shrink-0">
+                      👑 プレミアム限定あり
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-stone-400 leading-relaxed">
+                  アプリ全体の配色とデザインを着せ替えます。
+                </p>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {[
+                    { id: 'standard', name: 'スタンダード', isPremium: false, bgHex: '#FDFBF9', textHex: '#2d2d2d' },
+                    { id: 'dark', name: 'ダーク', isPremium: false, bgHex: '#121212', textHex: '#e2e8f0' },
+                    { id: 'cat', name: '🐈 キャット', isPremium: true, bgHex: '#FAF6F0', textHex: '#C27664' },
+                    { id: 'picture-book', name: '🎨 絵本パステル', isPremium: true, bgHex: '#FFFDF4', textHex: '#FF9A9E' },
+                    { id: 'botanical', name: '🌿 ボタニカル', isPremium: true, bgHex: '#F4F9F4', textHex: '#5F8575' },
+                    { id: 'cyber', name: '🌌 サイバー', isPremium: true, bgHex: '#0A0D14', textHex: '#00F2FE' },
+                  ].map(t => {
+                    const isActive = theme === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          if (t.isPremium && !userStatus.isPremium) {
+                            alert("👑 プレミアムテーマは使い放題プラン限定の特典です。アップグレードしてぜひご利用ください！✨");
+                            return;
+                          }
+                          setTheme(t.id);
+                        }}
+                        style={{ backgroundColor: t.bgHex }}
+                        className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-center gap-1 min-h-[64px] relative shadow-sm ${
+                          isActive
+                            ? 'ring-2 ring-orange-450 border-transparent scale-[1.02]'
+                            : 'border-stone-150 hover:scale-[1.01]'
+                        }`}
+                      >
+                        {t.isPremium && (
+                          <span className="absolute top-1.5 right-1.5 text-[9px] scale-90">
+                            👑
+                          </span>
+                        )}
+                        <span
+                          style={{ color: t.textHex }}
+                          className="text-xs font-black"
+                        >
+                          {t.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* 家族グループに合流（上書き同期） */}
             <div className="space-y-2 border-t pt-4">
