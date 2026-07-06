@@ -94,6 +94,7 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userStatus, setUserStatus] = useState({ isPremium: false, remainingScans: 10, maxScans: 10, groupId: '', inviteCode: '', externalSyncEnabled: false, syncToken: '' });
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+  const [isPremiumThemeAlertOpen, setIsPremiumThemeAlertOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
@@ -1309,7 +1310,7 @@ export default function Home() {
                         type="button"
                         onClick={() => {
                           if (t.isPremium && !userStatus.isPremium) {
-                            alert("👑 プレミアムテーマは使い放題プラン限定の特典です。アップグレードしてぜひご利用ください！✨");
+                            setIsPremiumThemeAlertOpen(true);
                             return;
                           }
                           setTheme(t.id);
@@ -1419,6 +1420,41 @@ export default function Home() {
               </a>
             </div>
             <button onClick={() => setIsSettingModalOpen(false)} className="w-full bg-stone-100 text-stone-600 font-extrabold py-3 rounded-xl text-xs mt-2">閉じる</button>
+          </div>
+        </div>
+      )}
+
+      {isPremiumThemeAlertOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm" onClick={() => setIsPremiumThemeAlertOpen(false)}>
+          <div className="bg-[#FDFBF9] border border-orange-100 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="space-y-2">
+              <span className="text-4xl block">👑</span>
+              <h3 className="text-lg font-black text-stone-800">プレミアム限定機能</h3>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                プレミアムテーマは使い放題プラン限定の特典です。<br />アップグレードして、お好みのデザインに着せ替えましょう！✨
+              </p>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPremiumThemeAlertOpen(false);
+                  setIsSettingModalOpen(false);
+                  handleUpgrade();
+                }}
+                className="w-full py-3 bg-gradient-to-r from-orange-400 to-amber-400 text-white font-extrabold text-xs rounded-xl shadow-md hover:from-orange-500 hover:to-amber-500 transition duration-200"
+              >
+                プレミアムにアップグレードする
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPremiumThemeAlertOpen(false)}
+                className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-500 font-extrabold text-xs rounded-xl transition duration-200"
+              >
+                キャンセル
+              </button>
+            </div>
           </div>
         </div>
       )}
