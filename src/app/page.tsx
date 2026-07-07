@@ -636,7 +636,7 @@ export default function Home() {
       const img = new Image();
       img.src = base64Str;
       img.onload = () => {
-        const maxLen = 1600;
+        const maxLen = 1200;
         let width = img.width;
         let height = img.height;
         if (width > maxLen || height > maxLen) {
@@ -673,6 +673,12 @@ export default function Home() {
     setNewScannedEvents([]);
     setErrorMessage(null);
 
+    // Create the timeout abort controller
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 13000); // 13 seconds timeout
+
     try {
       const base64Images: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -690,7 +696,10 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ images: base64Images, userId: user?.uid, targetMemberId: selectedScanMemberId }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+
       const data = await response.json();
       if (response.ok) {
         setNewScannedEvents(data.events || []);
@@ -701,7 +710,13 @@ export default function Home() {
         else setErrorMessage(data.error || "おたよりの読み込みに失敗しました😢");
       }
     } catch (err: any) {
-      setErrorMessage("通信に失敗しました。再度お試しください💦");
+      clearTimeout(timeoutId);
+      console.error("Scan error:", err);
+      if (err.name === 'AbortError') {
+        setErrorMessage("通信に時間がかかっています。ネットワーク環境を確認して再度お試しください。");
+      } else {
+        setErrorMessage("通信に失敗しました。再度お試しください💦");
+      }
     } finally {
       setLoading(false);
     }
