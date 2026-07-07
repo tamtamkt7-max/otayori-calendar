@@ -46,6 +46,10 @@ export default function AboutPage() {
               <Link href="/privacy" className="text-orange-400 hover:underline">
                 プライバシーポリシー
               </Link>
+              <span className="text-stone-300">|</span>
+              <Link href="/legal" className="text-orange-400 hover:underline">
+                特定商取引法に基づく表記
+              </Link>
             </div>
           </section>
         </div>

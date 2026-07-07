@@ -891,6 +891,8 @@ export default function Home() {
           <Link href="/terms" className="hover:underline font-bold">利用規約</Link>
           <span className="text-stone-300">|</span>
           <Link href="/privacy" className="hover:underline font-bold">プライバシーポリシー</Link>
+          <span className="text-stone-300">|</span>
+          <Link href="/legal" className="hover:underline font-bold">特定商取引法に基づく表記</Link>
           <p className="mt-2 text-stone-300">&copy; {new Date().getFullYear()} おたよりカレンダー</p>
         </footer>
       </div>
@@ -1704,6 +1706,8 @@ export default function Home() {
         <Link href="/terms" className="hover:underline font-bold">利用規約</Link>
         <span className="text-stone-300">|</span>
         <Link href="/privacy" className="hover:underline font-bold">プライバシーポリシー</Link>
+        <span className="text-stone-300">|</span>
+        <Link href="/legal" className="hover:underline font-bold">特定商取引法に基づく表記</Link>
         <p className="mt-2 text-stone-300">&copy; {new Date().getFullYear()} おたよりカレンダー</p>
       </footer>
     </div>
