@@ -50,6 +50,13 @@ export const COLOR_PALETTE: { id: MemberColor; name: string; bgClass: string; te
   { id: 'gray', name: 'グレー', bgClass: 'bg-stone-400 hover:bg-stone-500', textClass: 'text-stone-700', badgeClass: 'bg-stone-50 border-stone-200 text-stone-700', cardClass: 'bg-stone-50/25 border-stone-200/60', circleClass: 'bg-stone-400' }
 ];
 
+const EXTERNAL_BLOG_CONFIG = {
+  title: "運営者が選ぶ！買ってよかった子育て時短グッズ＆プリント整理術✨",
+  description: "日々のおたより管理がもっと楽になる、おすすめアイテムをブログで紹介中！",
+  url: "https://your-blog-url.com", // ユーザーが後から書き換え可能なプレースホルダー
+  buttonText: "コラムを読む ➔"
+};
+
 export default function Home() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -1176,6 +1183,29 @@ export default function Home() {
             </label>
             <button onClick={() => { if (isReadOnly) return; setEditingEvent({ title: "", date: todayStr, details: "", category: "school", color: "orange", imageUrl: null }); setIsEventModalOpen(true); }} className="w-full mt-3 py-3 bg-stone-50 text-stone-600 font-bold hover:bg-stone-100 transition rounded-2xl text-xs border border-stone-200">✍️ 手動で予定を追加する</button>
           </div>
+
+          {/* 外部ブログ誘導リッチリンク枠 */}
+          <a
+            href={EXTERNAL_BLOG_CONFIG.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-white rounded-3xl shadow-sm border border-stone-100 p-5 block hover:shadow-md transition text-left group"
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-2xl mt-0.5 select-none">💡</span>
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-stone-850 group-hover:text-orange-400 transition leading-snug">
+                  {EXTERNAL_BLOG_CONFIG.title}
+                </h4>
+                <p className="text-[10px] text-stone-400 leading-relaxed">
+                  {EXTERNAL_BLOG_CONFIG.description}
+                </p>
+                <span className="inline-block text-[10px] text-orange-400 font-bold mt-1">
+                  {EXTERNAL_BLOG_CONFIG.buttonText}
+                </span>
+              </div>
+            </div>
+          </a>
         </div>
       </main>
 
@@ -1586,6 +1616,22 @@ export default function Home() {
                 バグ報告・ご要望はこちら
               </a>
             </div>
+
+            {/* おすすめ情報セクション */}
+            <div className="space-y-2 border-t pt-4">
+              <h4 className="text-xs font-black text-stone-700">💡 おすすめ情報</h4>
+              <a
+                href={EXTERNAL_BLOG_CONFIG.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm block hover:scale-[1.01] transition duration-200 group"
+              >
+                <h5 className="text-[11px] font-black text-stone-800 group-hover:text-orange-400 transition leading-snug">{EXTERNAL_BLOG_CONFIG.title}</h5>
+                <p className="text-[9px] text-stone-400 mt-1 leading-relaxed">{EXTERNAL_BLOG_CONFIG.description}</p>
+                <span className="text-[9px] text-orange-400 font-bold mt-1.5 inline-block">{EXTERNAL_BLOG_CONFIG.buttonText}</span>
+              </a>
+            </div>
+
             <button onClick={() => setIsSettingModalOpen(false)} className="w-full bg-stone-100 text-stone-600 font-extrabold py-3 rounded-xl text-xs mt-2">閉じる</button>
           </div>
         </div>
