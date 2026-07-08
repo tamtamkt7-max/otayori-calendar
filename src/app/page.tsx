@@ -53,7 +53,7 @@ export const COLOR_PALETTE: { id: MemberColor; name: string; bgClass: string; te
 const EXTERNAL_BLOG_CONFIG = {
   title: "運営者が選ぶ！買ってよかった子育て時短グッズ＆プリント整理術✨",
   description: "日々のおたより管理がもっと楽になる、おすすめアイテムをブログで紹介中！",
-  url: "https://your-blog-url.com", // ユーザーが後から書き換え可能なプレースホルダー
+  url: "https://select-guide-memo.blogspot.com/", // ユーザーが後から書き換え可能なプレースホルダー
   buttonText: "コラムを読む ➔"
 };
 
@@ -353,7 +353,7 @@ export default function Home() {
         isNotificationEnabled: editingEvent.isNotificationEnabled !== false, // トグルの値を確実に反映
         memo: (editingEvent.memo || '').trim() // メモの値を確実に反映
       };
-      
+
       eventsToSave.push(baseEvent);
 
       // 新規作成時かつ繰り返し設定がある場合
@@ -1151,11 +1151,10 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setSelectedScanMemberId('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
-                    selectedScanMemberId === 'all'
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${selectedScanMemberId === 'all'
                       ? 'bg-orange-400 text-white border-transparent'
                       : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                  }`}
+                    }`}
                 >
                   🤖 自動判定
                 </button>
@@ -1164,11 +1163,10 @@ export default function Home() {
                     key={m.id}
                     type="button"
                     onClick={() => setSelectedScanMemberId(m.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
-                      selectedScanMemberId === m.id
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${selectedScanMemberId === m.id
                         ? 'bg-orange-400 text-white border-transparent'
                         : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                    }`}
+                      }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${COLOR_PALETTE.find(p => p.id === m.color)?.circleClass || 'bg-orange-400'}`} />
                     {m.name}
@@ -1308,7 +1306,7 @@ export default function Home() {
                   onClick={() => {
                     const shareId = `${userStatus.groupId || user?.uid}_${editingEvent.id}`;
                     const shareUrl = `${window.location.origin}/share/${shareId}`;
-                    
+
                     const formatShareDate = (dateStr: string) => {
                       if (!dateStr) return "";
                       try {
@@ -1513,11 +1511,10 @@ export default function Home() {
                           setTheme(t.id);
                         }}
                         style={{ backgroundColor: t.bgHex }}
-                        className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-center gap-1 min-h-[64px] relative shadow-sm ${
-                          isActive
+                        className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-center gap-1 min-h-[64px] relative shadow-sm ${isActive
                             ? 'ring-2 ring-orange-450 border-transparent scale-[1.02]'
                             : 'border-stone-150 hover:scale-[1.01]'
-                        }`}
+                          }`}
                       >
                         {t.isPremium && (
                           <span className="absolute top-1.5 right-1.5 text-[9px] scale-90">
@@ -1647,7 +1644,7 @@ export default function Home() {
                 プレミアムテーマは使い放題プラン限定の特典です。<br />アップグレードして、お好みのデザインに着せ替えましょう！✨
               </p>
             </div>
-            
+
             <div className="flex flex-col gap-2">
               <button
                 type="button"
