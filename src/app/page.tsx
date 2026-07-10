@@ -392,12 +392,14 @@ export default function Home() {
       // APIに送信して一括保存
       await Promise.all(eventsToSave.map(evt => saveEventToBackend(evt)));
 
-      await refetchEvents();
+      setLoading(false);
       setIsEventModalOpen(false);
       setEditingEvent(null);
+
+      await refetchEvents();
     } catch (err) {
-      alert("予定の保存に失敗しました💦");
-    } finally {
+      console.error("Failed to save event:", err);
+      alert("保存に失敗しました。もう一度お試しください。");
       setLoading(false);
     }
   };
