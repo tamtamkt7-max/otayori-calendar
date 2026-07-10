@@ -2,7 +2,11 @@
   "version": 2,
   "crons": [
     {
-      "path": "/api/cron/send-reminders",
+      "path": "/api/cron/send-reminders?days=1",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/send-reminders?days=3",
       "schedule": "0 10 * * *"
     },
     {

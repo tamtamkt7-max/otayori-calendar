@@ -66,13 +66,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: `データベース接続エラー: ${admin.error?.message || 'Unknown Firebase Admin error'}` }, { status: 500 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const daysParam = searchParams.get('days'); // "1" or "3"
+
     const messaging = getMessaging();
     const now = new Date();
 
-    // 2. status == 'pending' かつ scheduledAt <= 現在時刻 のリマインダードキュメントを抽出
+    // days パラメータがある場合は 18:00 実行時に 19:00 のスケジュールを拾えるよう 2時間のバッファを設定
+    const queryTime = daysParam ? new Date(now.getTime() + 2 * 60 * 60 * 1000) : now;
+
+    // 2. status == 'pending' かつ scheduledAt <= 現在時刻 (またはバッファ込) のリマインダードキュメントを抽出
     const remindersQuerySnapshot = await db.collection('reminders')
       .where('status', '==', 'pending')
-      .where('scheduledAt', '<=', Timestamp.fromDate(now))
+      .where('scheduledAt', '<=', Timestamp.fromDate(queryTime))
       .get();
 
     if (remindersQuerySnapshot.empty) {
@@ -83,11 +89,31 @@ export async function GET(req: Request) {
     let totalSent = 0;
     let totalFailed = 0;
 
+    // 日本時間 (JST) での判定用日付文字列を生成
+    const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    let targetDateStr: string | null = null;
+    let expectedType: string | null = null;
+
+    if (daysParam === '1') {
+      const targetDate = new Date(jstNow);
+      targetDate.setDate(jstNow.getDate() + 1);
+      targetDateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+      expectedType = 'one_day_ago';
+    } else if (daysParam === '3') {
+      const targetDate = new Date(jstNow);
+      targetDate.setDate(jstNow.getDate() + 3);
+      targetDateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+      expectedType = 'three_days_ago';
+    }
+
+    // 重複送信防止用のSet（同一イベントが同一端末に複数回送られるのを防ぐ）
+    const sentLog = new Set<string>();
+
     // 3. 各リマインダーについて通知送信処理を実行
     for (const docSnapshot of remindersQuerySnapshot.docs) {
       const reminderId = docSnapshot.id;
       const reminderData = docSnapshot.data();
-      const { uid, title, body, eventId, groupId: reminderGroupId } = reminderData;
+      const { uid, title, body, eventId, groupId: reminderGroupId, type: reminderType } = reminderData;
 
       // ユーザーのグループオーナーIDを解決する
       let groupOwnerId: string = reminderGroupId || uid;
@@ -104,26 +130,74 @@ export async function GET(req: Request) {
         }
       }
 
+      // daysパラメータによるフィルタリング
+      if (daysParam) {
+        // 1. リマインダーの type によるフィルタリング
+        if (expectedType && reminderType !== expectedType) {
+          continue;
+        }
+
+        // 2. 実際のイベントの日付によるフィルタリング
+        try {
+          const eventDoc = await db.collection('groups').doc(groupOwnerId).collection('events').doc(eventId).get();
+          if (!eventDoc.exists) {
+            console.log(`[send-reminders] Event ${eventId} not found, skipping reminder ${reminderId}`);
+            continue;
+          }
+          const eventData = eventDoc.data();
+
+          // イベント自体の通知がオフになっている場合はスキップ
+          if (eventData?.isNotificationEnabled === false) {
+            await docSnapshot.ref.update({
+              status: 'skipped',
+              skippedReason: 'Notification disabled for this event',
+              updatedAt: Timestamp.fromDate(new Date())
+            });
+            continue;
+          }
+
+          if (eventData?.date !== targetDateStr) {
+            // 対象日のイベントではないためスキップ
+            continue;
+          }
+        } catch (err) {
+          console.warn(`[send-reminders] Failed to verify event ${eventId} for reminder ${reminderId}:`, err);
+          continue; // 安全のためスキップ
+        }
+      }
+
       // グループ全員のFCMトークンを収集（家族全員へのマルチキャスト）
       let fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
       // 重複排除と無効なトークンの除去を徹底
       fcmTokens = Array.from(new Set(fcmTokens)).filter(token => token && typeof token === 'string' && token.trim() !== '');
 
-      if (fcmTokens.length === 0) {
-        // トークンが無い場合はスキップ扱いに更新
+      // 完全な重複送信の排除ロジック
+      const filteredTokens: string[] = [];
+      for (const token of fcmTokens) {
+        const uniqueKey = `${token}-${eventId}`;
+        if (sentLog.has(uniqueKey)) {
+          console.log(`[send-reminders] Skipping duplicate notification for token ${token.substring(0, 10)}... and event ${eventId}`);
+          continue;
+        }
+        filteredTokens.push(token);
+        sentLog.add(uniqueKey);
+      }
+
+      if (filteredTokens.length === 0) {
+        // すでにすべてのトークンに対して送信済みの場合、このリマインダーをスキップ扱いに更新
         await docSnapshot.ref.update({
           status: 'skipped',
-          skippedReason: 'No FCM tokens registered for group',
+          skippedReason: 'Notification already sent to all tokens for this event',
           updatedAt: Timestamp.fromDate(new Date())
         });
-        results.push({ reminderId, status: 'skipped', reason: 'No tokens' });
+        results.push({ reminderId, status: 'skipped', reason: 'Duplicate event/token' });
         continue;
       }
 
       try {
         // FCMへ一括プッシュ送信 (sendEachForMulticast) - 家族全員のデバイスへ
         const response = await messaging.sendEachForMulticast({
-          tokens: fcmTokens,
+          tokens: filteredTokens,
           notification: {
             title: title || '【おたよりリマインド】',
             body: body || '明日の予定をチェックしましょう。',
@@ -156,7 +230,7 @@ export async function GET(req: Request) {
               errCode === 'messaging/registration-token-not-registered' ||
               errCode === 'messaging/invalid-argument'
             ) {
-              tokensToRemove.push(fcmTokens[idx]);
+              tokensToRemove.push(filteredTokens[idx]);
             }
           }
         });
@@ -208,7 +282,7 @@ export async function GET(req: Request) {
           successCount: response.successCount,
           failureCount: response.failureCount,
           removedTokensCount: tokensToRemove.length,
-          totalRecipients: fcmTokens.length,
+          totalRecipients: filteredTokens.length,
         });
 
       } catch (sendError: any) {
