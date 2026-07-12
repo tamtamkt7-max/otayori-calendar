@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getToken } from 'firebase/messaging';
-import { doc, setDoc, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db, getFcmMessaging } from '../lib/firebase';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
 
@@ -53,7 +53,14 @@ export const useFcm = (uid: string | undefined) => {
         }
 
         // Firestore の users/{uid} ドキュメントに配列として保存
+        // 物理的重複ブロック: DBに既に同一トークンが存在する場合は書き込みをスキップ
         const userRef = doc(db, 'users', userId);
+        const existingDoc = await getDoc(userRef);
+        const existingTokens: string[] = existingDoc.exists() ? (existingDoc.data()?.fcmTokens || []) : [];
+        if (existingTokens.includes(token)) {
+          console.log('[FCM] Token already exists in DB, skipping write to prevent duplication.');
+          return;
+        }
         await setDoc(userRef, { 
           fcmTokens: arrayUnion(token), 
           updatedAt: new Date().toISOString() 
@@ -90,11 +97,18 @@ export const useFcm = (uid: string | undefined) => {
           if (token) {
             setFcmToken(token);
             // Firestore の users/{uid} ドキュメントに配列として保存
+            // 物理的重複ブロック: DBに既に同一トークンが存在する場合は書き込みをスキップ
             const userRef = doc(db, 'users', uid);
-            await setDoc(userRef, {
-              fcmTokens: arrayUnion(token),
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            const existingDoc = await getDoc(userRef);
+            const existingTokens: string[] = existingDoc.exists() ? (existingDoc.data()?.fcmTokens || []) : [];
+            if (!existingTokens.includes(token)) {
+              await setDoc(userRef, {
+                fcmTokens: arrayUnion(token),
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } else {
+              console.log('[FCM] Token already exists in DB, skipping write to prevent duplication.');
+            }
 
             // GA4イベントトラッキング
             trackEvent(GA_EVENTS.NOTIFICATION_SUBSCRIBE, 'notification', 'subscribe_fcm_success');
