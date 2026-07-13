@@ -14,15 +14,26 @@ async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<str
   try {
     const ownerDoc = await db.collection('users').doc(groupOwnerId).get();
     if (ownerDoc.exists) {
-      const ownerTokens: string[] = ownerDoc.data()?.fcmTokens || [];
-      ownerTokens.forEach((t: string) => allTokens.add(t));
+      const ownerData = ownerDoc.data();
+      const tokens = ownerData?.fcmTokens || [];
+      if (!Array.isArray(tokens)) {
+        console.warn(`[collectGroupFcmTokens] fcmTokens for owner ${groupOwnerId} is not an array`);
+      } else {
+        const uniqueTokens = Array.from(new Set(tokens.filter((t: any) => t && typeof t === 'string' && t.trim() !== '')));
+        uniqueTokens.forEach((t) => allTokens.add(t));
+      }
     }
     const membersSnapshot = await db.collection('users')
       .where('groupId', '==', groupOwnerId)
       .get();
     membersSnapshot.forEach((memberDoc: any) => {
-      const memberTokens: string[] = memberDoc.data()?.fcmTokens || [];
-      memberTokens.forEach((t: string) => allTokens.add(t));
+      const memberData = memberDoc.data();
+      const tokens = memberData?.fcmTokens || [];
+      if (!Array.isArray(tokens)) {
+        return; // Skip if not an array
+      }
+      const uniqueTokens = Array.from(new Set(tokens.filter((t: any) => t && typeof t === 'string' && t.trim() !== '')));
+      uniqueTokens.forEach((t) => allTokens.add(t));
     });
   } catch (err) {
     console.warn(`[collectGroupFcmTokens] Failed to collect tokens for group ${groupOwnerId}:`, err);

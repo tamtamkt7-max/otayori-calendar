@@ -18,8 +18,14 @@ async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<str
     // 1. グループオーナー自身のFCMトークンを取得
     const ownerDoc = await db.collection('users').doc(groupOwnerId).get();
     if (ownerDoc.exists) {
-      const ownerTokens: string[] = ownerDoc.data()?.fcmTokens || [];
-      ownerTokens.forEach((t) => allTokens.add(t));
+      const ownerData = ownerDoc.data();
+      const tokens = ownerData?.fcmTokens || [];
+      if (!Array.isArray(tokens)) {
+        console.warn(`[collectGroupFcmTokens] fcmTokens for owner ${groupOwnerId} is not an array`);
+      } else {
+        const uniqueTokens = Array.from(new Set(tokens.filter((t: any) => t && typeof t === 'string' && t.trim() !== '')));
+        uniqueTokens.forEach((t) => allTokens.add(t));
+      }
     }
 
     // 2. このグループに所属する家族メンバー全員のFCMトークンを取得
@@ -29,8 +35,13 @@ async function collectGroupFcmTokens(db: any, groupOwnerId: string): Promise<str
       .get();
 
     membersSnapshot.forEach((memberDoc: any) => {
-      const memberTokens: string[] = memberDoc.data()?.fcmTokens || [];
-      memberTokens.forEach((t) => allTokens.add(t));
+      const memberData = memberDoc.data();
+      const tokens = memberData?.fcmTokens || [];
+      if (!Array.isArray(tokens)) {
+        return; // Skip if not an array
+      }
+      const uniqueTokens = Array.from(new Set(tokens.filter((t: any) => t && typeof t === 'string' && t.trim() !== '')));
+      uniqueTokens.forEach((t) => allTokens.add(t));
     });
   } catch (err) {
     console.warn(`[collectGroupFcmTokens] Failed to collect tokens for group ${groupOwnerId}:`, err);
@@ -112,89 +123,93 @@ export async function GET(req: Request) {
     // 3. 各リマインダーについて通知送信処理を実行
     for (const docSnapshot of remindersQuerySnapshot.docs) {
       const reminderId = docSnapshot.id;
-      const reminderData = docSnapshot.data();
-      const { uid, title, body, eventId, groupId: reminderGroupId, type: reminderType } = reminderData;
-
-      // ユーザーのグループオーナーIDを解決する
-      let groupOwnerId: string = reminderGroupId || uid;
-
-      // groupId がリマインダーに未設定の場合は users/{uid} から動的取得（後方互換性）
-      if (!reminderGroupId) {
-        try {
-          const userDoc = await db.collection('users').doc(uid).get();
-          if (userDoc.exists) {
-            groupOwnerId = userDoc.data()?.groupId || uid;
-          }
-        } catch (err) {
-          console.warn(`[send-reminders] Could not resolve groupId for user ${uid}:`, err);
-        }
-      }
-
-      // daysパラメータによるフィルタリング
-      if (daysParam) {
-        // 1. リマインダーの type によるフィルタリング
-        if (expectedType && reminderType !== expectedType) {
-          continue;
-        }
-
-        // 2. 実際のイベントの日付によるフィルタリング
-        try {
-          const eventDoc = await db.collection('groups').doc(groupOwnerId).collection('events').doc(eventId).get();
-          if (!eventDoc.exists) {
-            console.log(`[send-reminders] Event ${eventId} not found, skipping reminder ${reminderId}`);
-            continue;
-          }
-          const eventData = eventDoc.data();
-
-          // イベント自体の通知がオフになっている場合はスキップ
-          if (eventData?.isNotificationEnabled === false) {
-            await docSnapshot.ref.update({
-              status: 'skipped',
-              skippedReason: 'Notification disabled for this event',
-              updatedAt: Timestamp.fromDate(new Date())
-            });
-            continue;
-          }
-
-          if (eventData?.date !== targetDateStr) {
-            // 対象日のイベントではないためスキップ
-            continue;
-          }
-        } catch (err) {
-          console.warn(`[send-reminders] Failed to verify event ${eventId} for reminder ${reminderId}:`, err);
-          continue; // 安全のためスキップ
-        }
-      }
-
-      // グループ全員のFCMトークンを収集（家族全員へのマルチキャスト）
-      let fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
-      // 重複排除と無効なトークンの除去を徹底
-      fcmTokens = Array.from(new Set(fcmTokens)).filter(token => token && typeof token === 'string' && token.trim() !== '');
-
-      // 完全な重複送信の排除ロジック
-      const filteredTokens: string[] = [];
-      for (const token of fcmTokens) {
-        const uniqueKey = `${token}-${eventId}`;
-        if (sentLog.has(uniqueKey)) {
-          console.log(`[send-reminders] Skipping duplicate notification for token ${token.substring(0, 10)}... and event ${eventId}`);
-          continue;
-        }
-        filteredTokens.push(token);
-        sentLog.add(uniqueKey);
-      }
-
-      if (filteredTokens.length === 0) {
-        // すでにすべてのトークンに対して送信済みの場合、このリマインダーをスキップ扱いに更新
-        await docSnapshot.ref.update({
-          status: 'skipped',
-          skippedReason: 'Notification already sent to all tokens for this event',
-          updatedAt: Timestamp.fromDate(new Date())
-        });
-        results.push({ reminderId, status: 'skipped', reason: 'Duplicate event/token' });
-        continue;
-      }
-
+      let uid = '';
+      let eventId = '';
       try {
+        const reminderData = docSnapshot.data() || {};
+        uid = reminderData.uid || '';
+        eventId = reminderData.eventId || '';
+        const { title, body, groupId: reminderGroupId, type: reminderType } = reminderData;
+
+        // ユーザーのグループオーナーIDを解決する
+        let groupOwnerId: string = reminderGroupId || uid;
+
+        // groupId がリマインダーに未設定の場合は users/{uid} から動的取得（後方互換性）
+        if (!reminderGroupId) {
+          try {
+            const userDoc = await db.collection('users').doc(uid).get();
+            if (userDoc.exists) {
+              groupOwnerId = userDoc.data()?.groupId || uid;
+            }
+          } catch (err) {
+            console.warn(`[send-reminders] Could not resolve groupId for user ${uid}:`, err);
+          }
+        }
+
+        // daysパラメータによるフィルタリング
+        if (daysParam) {
+          // 1. リマインダーの type によるフィルタリング
+          if (expectedType && reminderType !== expectedType) {
+            continue;
+          }
+
+          // 2. 実際のイベントの日付によるフィルタリング
+          try {
+            const eventDoc = await db.collection('groups').doc(groupOwnerId).collection('events').doc(eventId).get();
+            if (!eventDoc.exists) {
+              console.log(`[send-reminders] Event ${eventId} not found, skipping reminder ${reminderId}`);
+              continue;
+            }
+            const eventData = eventDoc.data();
+
+            // イベント自体の通知がオフになっている場合はスキップ
+            if (eventData?.isNotificationEnabled === false) {
+              await docSnapshot.ref.update({
+                status: 'skipped',
+                skippedReason: 'Notification disabled for this event',
+                updatedAt: Timestamp.fromDate(new Date())
+              });
+              continue;
+            }
+
+            if (eventData?.date !== targetDateStr) {
+              // 対象日のイベントではないためスキップ
+              continue;
+            }
+          } catch (err) {
+            console.warn(`[send-reminders] Failed to verify event ${eventId} for reminder ${reminderId}:`, err);
+            continue; // 安全のためスキップ
+          }
+        }
+
+        // グループ全員のFCMトークンを収集（家族全員へのマルチキャスト）
+        let fcmTokens = await collectGroupFcmTokens(db, groupOwnerId);
+        // 重複排除と無効なトークンの除去を徹底
+        fcmTokens = Array.from(new Set(fcmTokens)).filter(token => token && typeof token === 'string' && token.trim() !== '');
+
+        // 完全な重複送信の排除ロジック
+        const filteredTokens: string[] = [];
+        for (const token of fcmTokens) {
+          const uniqueKey = `${token}-${eventId}`;
+          if (sentLog.has(uniqueKey)) {
+            console.log(`[send-reminders] Skipping duplicate notification for token ${token.substring(0, 10)}... and event ${eventId}`);
+            continue;
+          }
+          filteredTokens.push(token);
+          sentLog.add(uniqueKey);
+        }
+
+        if (filteredTokens.length === 0) {
+          // すでにすべてのトークンに対して送信済みの場合、このリマインダーをスキップ扱いに更新
+          await docSnapshot.ref.update({
+            status: 'skipped',
+            skippedReason: 'Notification already sent to all tokens for this event',
+            updatedAt: Timestamp.fromDate(new Date())
+          });
+          results.push({ reminderId, status: 'skipped', reason: 'Duplicate event/token' });
+          continue;
+        }
+
         // FCMへ一括プッシュ送信 (sendEachForMulticast) - 家族全員のデバイスへ
         const response = await messaging.sendEachForMulticast({
           tokens: filteredTokens,
@@ -285,21 +300,25 @@ export async function GET(req: Request) {
           totalRecipients: filteredTokens.length,
         });
 
-      } catch (sendError: any) {
-        console.error(`Critical error sending reminder ${reminderId}:`, sendError);
+      } catch (itemError: any) {
+        console.error(`Critical error processing reminder ${reminderId}:`, itemError);
 
-        await docSnapshot.ref.update({
-          status: 'failed',
-          errorMessage: sendError.message || 'Unknown sending error',
-          updatedAt: Timestamp.fromDate(new Date())
-        });
+        try {
+          await docSnapshot.ref.update({
+            status: 'failed',
+            errorMessage: itemError.message || 'Unknown sending error',
+            updatedAt: Timestamp.fromDate(new Date())
+          });
+        } catch (dbUpdateError) {
+          console.error(`Failed to update reminder status to failed for ${reminderId}:`, dbUpdateError);
+        }
 
         results.push({
           reminderId,
           eventId,
           uid,
           status: 'failed',
-          error: sendError.message
+          error: itemError.message
         });
       }
     }
