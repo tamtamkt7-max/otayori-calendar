@@ -1051,7 +1051,7 @@ export default function Home() {
                 </span>
                 <input
                   type="text"
-                  placeholder="予定を検索（例: 運動会, 提出）"
+                  placeholder="予定を検索"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 text-xs font-medium rounded-2xl bg-stone-50 border border-stone-200 text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all shadow-inner"
