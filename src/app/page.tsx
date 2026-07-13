@@ -82,6 +82,7 @@ export default function Home() {
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const [currentDate, setCurrentDate] = useState(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
+  const [searchQuery, setSearchQuery] = useState('');
   const [events, setEvents] = useState<any[]>([]);
   const [isSettingModalOpen, setIsSettingModalOpen] = useState(false);
 
@@ -1041,6 +1042,32 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {viewMode !== 'history' && (
+              <div className="mb-5 relative flex items-center max-w-md w-full">
+                <span className="absolute left-3.5 text-stone-450">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="予定を検索（例: 運動会, 提出）"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 text-xs font-medium rounded-2xl bg-stone-50 border border-stone-200 text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all shadow-inner"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3.5 p-1 rounded-full hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
             {viewMode !== 'history' ? (
               <>
                 <div className="grid grid-cols-7 text-center text-[11px] font-bold text-stone-400 mb-3">
@@ -1048,7 +1075,7 @@ export default function Home() {
                 </div>
                 <div className="grid grid-cols-7 gap-1">
                   {(viewMode === 'month' ? calendarCells : getWeekCells()).map((date, idx) => {
-                    if (!date) return <div key={`empty-${idx}`} className="aspect-square"></div>;
+                    if (!date) return <div key={`empty-${idx}`} className="min-h-[70px] sm:min-h-[85px]"></div>;
                     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                     const isSelected = dateStr === selectedDateStr;
 
@@ -1062,17 +1089,58 @@ export default function Home() {
                       return matchedMember ? matchedMember.color : (e.color || 'orange');
                     })));
 
+                    const isHighlighted = searchQuery.trim() !== '' && dayEvents.some(ev => 
+                      (ev.title && ev.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                      (ev.memo && ev.memo.toLowerCase().includes(searchQuery.toLowerCase()))
+                    );
+
                     return (
-                      <button key={`day-${idx}`} onClick={() => setSelectedDateStr(dateStr)} className={`aspect-square rounded-2xl relative flex flex-col items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300' : 'hover:bg-stone-50 text-stone-600'}`}>
-                        <span className="z-10">{date.getDate()}</span>
-                        {hasEvents && (
-                          <div className="absolute bottom-1.5 flex gap-0.5 justify-center z-10">
-                            {uniqueColors.map(col => {
-                              const matchedPalette = COLOR_PALETTE.find(p => p.id === col);
-                              return <span key={col as string} className={`w-1.5 h-1.5 rounded-full ${matchedPalette ? matchedPalette.circleClass : 'bg-orange-400'}`}></span>;
-                            })}
-                          </div>
-                        )}
+                      <button
+                        key={`day-${idx}`}
+                        onClick={() => setSelectedDateStr(dateStr)}
+                        className={`min-h-[70px] sm:min-h-[85px] w-full p-1 rounded-2xl relative flex flex-col justify-between items-stretch font-bold transition-all ${
+                          isSelected 
+                            ? 'bg-orange-200 text-orange-900 scale-105 z-10 shadow-sm border border-orange-300' 
+                            : isHighlighted 
+                              ? 'bg-yellow-100/90 hover:bg-yellow-150 border-2 border-amber-400/80 text-amber-900 shadow-sm scale-[1.02] z-10' 
+                              : 'hover:bg-stone-50 border border-transparent text-stone-600'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center px-1">
+                          <span className="text-xs sm:text-sm z-10">{date.getDate()}</span>
+                          {hasEvents && (
+                            <div className="flex gap-0.5">
+                              {uniqueColors.map(col => {
+                                const matchedPalette = COLOR_PALETTE.find(p => p.id === col);
+                                return <span key={col as string} className={`w-1 h-1 rounded-full ${matchedPalette ? matchedPalette.circleClass : 'bg-orange-400'}`}></span>;
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-1 flex-1 flex flex-col justify-end w-full space-y-0.5 overflow-hidden">
+                          {dayEvents.slice(0, 2).map((ev, evIdx) => {
+                            const evMember = members.find(m => m.id === ev.memberId);
+                            const evColor = evMember ? evMember.color : (ev.color || 'orange');
+                            const matchedPalette = COLOR_PALETTE.find(p => p.id === evColor);
+                            return (
+                              <div
+                                key={ev.id || evIdx}
+                                className={`text-[8px] sm:text-[9px] font-normal leading-tight px-1 py-0.5 rounded truncate w-full text-left ${
+                                  matchedPalette 
+                                    ? `${matchedPalette.badgeClass} border` 
+                                    : 'bg-orange-50 border border-orange-100 text-orange-700'
+                                }`}
+                              >
+                                {ev.title}
+                              </div>
+                            );
+                          })}
+                          {dayEvents.length > 2 && (
+                            <div className="text-[8px] font-normal text-stone-400 text-right pr-1 leading-none">
+                              +{dayEvents.length - 2}
+                            </div>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
