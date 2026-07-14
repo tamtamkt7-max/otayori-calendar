@@ -20,9 +20,17 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
   
-  const notificationTitle = payload.notification?.title || 'おたよりカレンダー';
+  // payload.notification が存在する場合、Firebase SDKが自動で通知を表示するため、
+  // 重複表示を防ぐために手動での showNotification 呼び出しをスキップします。
+  if (payload.notification) {
+    console.log('[firebase-messaging-sw.js] Firebase SDK will automatically display this notification. Skipping manual display.');
+    return;
+  }
+
+  // payload.data のみの場合に手動で通知を表示する
+  const notificationTitle = payload.data?.title || 'おたよりカレンダー';
   const notificationOptions = {
-    body: payload.notification?.body || '新しい通知があります。',
+    body: payload.data?.body || '新しい通知があります。',
     icon: '/favicon.ico',
   };
 

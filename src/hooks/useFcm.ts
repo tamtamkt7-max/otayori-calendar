@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getToken } from 'firebase/messaging';
+import { getToken, onMessage } from 'firebase/messaging';
 import { doc, setDoc, getDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db, getFcmMessaging } from '../lib/firebase';
 import { trackEvent, GA_EVENTS } from '../lib/gtag';
@@ -70,6 +70,40 @@ export const useFcm = (uid: string | undefined) => {
       console.error('Failed to get FCM token implicitly:', err);
     }
   };
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    const setupForegroundListener = async () => {
+      try {
+        const messaging = await getFcmMessaging();
+        if (messaging) {
+          unsubscribe = onMessage(messaging, (payload) => {
+            console.log('[useFcm] Received foreground message:', payload);
+            
+            // フォアグラウンドではOSのシステム通知を表示せず、アプリ内トーストやアラートUI（表示領域が見えている場合のみ）にて通知を知らせる
+            if (payload.notification && typeof window !== 'undefined' && document.visibilityState === 'visible') {
+              const title = payload.notification.title || 'おたよりカレンダー';
+              const body = payload.notification.body || '';
+              alert(`🔔 ${title}\n${body}`);
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[useFcm] Failed to setup foreground listener:', err);
+      }
+    };
+
+    if (uid) {
+      setupForegroundListener();
+    }
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [uid]);
 
   const requestPermission = async () => {
     if (!uid) return null;
