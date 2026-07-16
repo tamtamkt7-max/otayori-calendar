@@ -120,7 +120,20 @@ export async function GET(req: Request) {
     // 重複送信防止用のSet（同一イベントが同一端末に複数回送られるのを防ぐ）
     const sentLog = new Set<string>();
 
-    // 3. 各リマインダーについて通知送信処理を実行
+    interface SendTask {
+      reminderId: string;
+      docSnapshot: any;
+      eventId: string;
+      uid: string;
+      groupOwnerId: string;
+      title: string;
+      body: string;
+      tokens: string[];
+    }
+
+    const sendTasks: SendTask[] = [];
+
+    // 3. 各リマインダーについて通知送信の準備（ターゲット抽出・フィルタリング）を実行
     for (const docSnapshot of remindersQuerySnapshot.docs) {
       const reminderId = docSnapshot.id;
       let uid = '';
@@ -210,12 +223,50 @@ export async function GET(req: Request) {
           continue;
         }
 
+        sendTasks.push({
+          reminderId,
+          docSnapshot,
+          eventId,
+          uid,
+          groupOwnerId,
+          title: title || '【おたよりリマインド】',
+          body: body || '明日の予定をチェックしましょう。',
+          tokens: filteredTokens,
+        });
+
+      } catch (itemError: any) {
+        console.error(`Critical error preparing reminder ${reminderId}:`, itemError);
+
+        try {
+          await docSnapshot.ref.update({
+            status: 'failed',
+            errorMessage: itemError.message || 'Unknown sending error',
+            updatedAt: Timestamp.fromDate(new Date())
+          });
+        } catch (dbUpdateError) {
+          console.error(`Failed to update reminder status to failed for ${reminderId}:`, dbUpdateError);
+        }
+
+        results.push({
+          reminderId,
+          eventId,
+          uid,
+          status: 'failed',
+          error: itemError.message
+        });
+      }
+    }
+
+    // 4. 重複が完全に排除されたクリーンなメッセージ配列に対してのみ、送信処理を実行
+    for (const task of sendTasks) {
+      const { reminderId, docSnapshot, eventId, uid, groupOwnerId, title, body, tokens: filteredTokens } = task;
+      try {
         // FCMへ一括プッシュ送信 (sendEachForMulticast) - 家族全員のデバイスへ
         const response = await messaging.sendEachForMulticast({
           tokens: filteredTokens,
           notification: {
-            title: title || '【おたよりリマインド】',
-            body: body || '明日の予定をチェックしましょう。',
+            title,
+            body,
           },
           webpush: {
             headers: {
@@ -250,7 +301,7 @@ export async function GET(req: Request) {
           }
         });
 
-        // 4. 無効なFCMトークンがある場合はFirestoreのユーザー情報から削除 (クリーンアップ)
+        // 無効なFCMトークンがある場合はFirestoreのユーザー情報から削除 (クリーンアップ)
         // グループオーナーと全メンバー両方から無効トークンを削除する
         if (tokensToRemove.length > 0) {
           const batch = db.batch();
